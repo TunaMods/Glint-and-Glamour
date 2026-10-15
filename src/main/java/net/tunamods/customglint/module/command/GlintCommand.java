@@ -379,6 +379,10 @@ public class GlintCommand {
             GlintTrimItem.setScrollOffset(trim, layer.scrollOffset());
             GlintTrimItem.setPattern(trim, layer.design());
             GlintTrimItem.setGlowing(trim, CustomGlint.isGlowing(held));
+            // setPattern/setGlowing re-emit the preview as a sequential layer; write the real one last so the
+            // simultaneous flag and seed survive.
+            CustomGlint.write(trim, layers);
+            GlintTrimItem.setSeed(trim, layer.seed());
         } else {
             // Multi-layer: set the display config from layer 0, then copy the full glint tag verbatim.
             CustomGlint.Layer layer0 = layers[0];
