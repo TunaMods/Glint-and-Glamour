@@ -1050,7 +1050,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     public static RenderType forArmorGlint(Data glint, int layerIdx, float[] frameColor, int colorIdx) {
         Layer layer = glint.layers()[layerIdx];
         if (getTexture(layer.design()) == null) return null;
-        String key = "armor|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
+        String key = "armor|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_ARMOR_GLINT.computeIfAbsent(key, k -> {
@@ -1140,7 +1140,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
                                                  VertexFormat.Mode mode, boolean lateForShaders) {
         Layer layer = glint.layers()[layerIdx];
         if (getTexture(layer.design()) == null) return null;
-        String key = "horse|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset() + "|" + mode + "|" + (lateForShaders ? "late" : "");
+        String key = "horse|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset() + "|" + mode + "|" + (lateForShaders ? "late" : "");
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_HORSE_ARMOR_GLINT.computeIfAbsent(key, k -> {
@@ -1286,7 +1286,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     public static RenderType forMountArmorGlint(Data glint, int layerIdx, float[] frameColor, int colorIdx) {
         Layer layer = glint.layers()[layerIdx];
         if (getTexture(layer.design()) == null) return null;
-        String key = "mount|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
+        String key = "mount|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_MOUNT_ARMOR_GLINT.computeIfAbsent(key, k -> {
@@ -1358,7 +1358,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
             }
         }
         if (getTexture(layer.design()) == null) return null;
-        String key = layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.interpolate() + "|" + isItem + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
+        String key = layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + isItem + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_GLINT.computeIfAbsent(key, k -> {
