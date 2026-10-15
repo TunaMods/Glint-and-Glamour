@@ -392,6 +392,8 @@ public class GlintCommand {
                 layerObj.addProperty("interpolate", layer.interpolate());
                 layerObj.addProperty("patternScale", layer.patternScale());
                 layerObj.addProperty("simultaneous", layer.simultaneous());
+                layerObj.addProperty("scroll", layer.scrollDir());
+                layerObj.addProperty("offset", layer.scrollOffset());
 
                 layersArray.add(layerObj);
             }
