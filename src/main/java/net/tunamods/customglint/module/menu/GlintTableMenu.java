@@ -431,6 +431,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (!(player instanceof ServerPlayer sp)) return;
         ResourceLocation design = ResourceLocation.tryParse(designId);
         if (design == null) return;
+        // Opacity is 0..8 glass levels; out of range it would wrap the alpha byte and dodge the glass cost.
+        opacity = Math.max(0, Math.min(8, opacity));
 
         // The active layer's speed/scale are clamped below; the below/above layers arrive straight from
         // GlintPrintPacket, so sanitize them the same way (finite floats, 8-color cap) before they persist
