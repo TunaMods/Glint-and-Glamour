@@ -72,7 +72,7 @@ public class ItemRendererMixin {
         // glowing item in a HUD slot needs its element live every frame or the glint freezes and the glow
         // ring flickers. Tell gnetum to stop caching whatever HUD element it is mid-render of (the hotbar).
         // No-op off gnetum, off the HUD, or once that element is already dropped.
-        if (ctx == ItemDisplayContext.GUI && (CustomGlint.has(stack) || CustomGlint.isGlowing(stack))) {
+        if (ctx == ItemDisplayContext.GUI && (CustomGlint.readCached(stack) != null || CustomGlint.isGlowing(stack))) {
             GnetumHudCompat.disableHudCachingForCurrentElement();
         }
     }

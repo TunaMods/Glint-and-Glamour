@@ -348,8 +348,17 @@ public final class CustomGlint {
     private static final ThreadLocal<WeakHashMap<CompoundTag, Data>> DATA_CACHE =
             ThreadLocal.withInitial(WeakHashMap::new);
 
+    /** Render-side read: the stack's own glint, else the type-wide glint for its item ({@link #getItemGlint}).
+     *  Only the render paths call this. Server logic uses {@link #read}, which never falls back, so a type-wide
+     *  glint is never written into NBT, copied by a recipe, or counted by the Glint Table. */
     @Nullable
     public static Data readCached(ItemStack stack) {
+        Data own = readCachedNbt(stack);
+        return own != null ? own : getItemGlint(stack.getItem());
+    }
+
+    @Nullable
+    private static Data readCachedNbt(ItemStack stack) {
         if (!stack.hasTag()) return null;
         CompoundTag root = stack.getTag();
         if (!root.contains(TAG)) return null;
@@ -649,6 +658,42 @@ public final class CustomGlint {
 
     public static void registerLootGlint(ResourceLocation lootTable, Item item, ResourceLocation design, int[] colors) {
         registerLootGlint(lootTable, item, design, colors, 1.0f, true, 1.0f, true);
+    }
+
+    // Item-type glints
+    //
+    // Every stack of a registered item renders with its glint, with nothing written to NBT: /give, creative,
+    // other mods' loot and items that existed before the registration all show it. A stack's own glint always
+    // wins. Read only through readCached, so it is render-side only (layers, no glow outline).
+    //
+    // Two sources. ITEM_GLINTS is the public registry for mods, filled from code at load. The rule map is
+    // owned by the full mod's /glint rule item command: the server syncs it to each client, which replaces it
+    // wholesale through setRuleItemGlints. Rules take precedence, so a pack author can override a mod.
+
+    public static final Map<Item, Data> ITEM_GLINTS = new HashMap<>();
+
+    public static void registerItemGlint(Item item, Data data) {
+        ITEM_GLINTS.put(item, data);
+    }
+
+    public static void registerItemGlint(Item item, ResourceLocation design, int[] colors) {
+        registerItemGlint(item, new Data(new Layer[]{ new Layer(design, colors, 1.0f, true, 1.0f, true) }));
+    }
+
+    /** Synced copy of the server's item rules. Replaced, never mutated, so the render thread can read it while
+     *  a sync lands without locking. */
+    private static volatile Map<Item, Data> ruleItemGlints = Map.of();
+
+    /** Replaces the item rules (the full mod's sync packet, and an empty map on disconnect). */
+    public static void setRuleItemGlints(Map<Item, Data> glints) {
+        ruleItemGlints = Map.copyOf(glints);
+    }
+
+    /** The type-wide glint for {@code item}: an item rule first, then {@link #ITEM_GLINTS}, else null. */
+    @Nullable
+    public static Data getItemGlint(Item item) {
+        Data rule = ruleItemGlints.get(item);
+        return rule != null ? rule : ITEM_GLINTS.get(item);
     }
 
     // Entity glint API
