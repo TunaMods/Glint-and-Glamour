@@ -10,6 +10,7 @@ import net.tunamods.customglint.common.mixin.TextureStateShardAccessor;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -649,11 +650,17 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     // it must hand back exactly what it found. Forcing world defaults inside the GUI phase left
     // EnhancedVisuals' fullscreen overlay pass drawing UNBLENDED, which painted the whole screen black.
     private static boolean savedBlend, savedDepthTest;
+    // BlendMode.lastApplied is not GL state, but later code depends on it. Both glow shaders declare no blend,
+    // so they parse as OPAQUE and leave lastApplied opaque, which makes the next blended shader re-set its own
+    // blend function over whatever its caller set. Citadel's post-effect blit (Alex's Caves) relies on that not
+    // happening; see GLINT_SHADER_SHARD in CustomGlintRenderer for the black-screen case.
+    private static BlendMode savedBlendMode;
 
     /** Snapshot the ambient blend / depth-test enable flags before the drain mutates GL state. */
     private static void snapshotAmbientState() {
         savedBlend = GL11.glIsEnabled(GL11.GL_BLEND);
         savedDepthTest = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        savedBlendMode = BlendMode.lastApplied;
     }
 
     /** Guarantee the MAIN render target is the bound draw target and hand back the GL state the surrounding
@@ -679,6 +686,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
         RenderSystem.disableScissor();
+        BlendMode.lastApplied = savedBlendMode;
     }
 
     /** Shared drain: accumulate the queued silhouettes into the mask under their captured modelview + the

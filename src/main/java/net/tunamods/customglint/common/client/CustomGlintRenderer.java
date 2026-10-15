@@ -1,6 +1,7 @@
 package net.tunamods.customglint.common.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -582,9 +583,28 @@ public final class CustomGlintRenderer extends RenderStateShard {
     private static ShaderInstance glintShader;
 
     /** Shader shard for every texture-glint RenderType (items, armor, entities, horse/mount armor, and the
-     *  compat builders). Resolved per draw by {@link #resolveGlintShader()}. */
+     *  compat builders). Resolved per draw by {@link #resolveGlintShader()}.
+     *
+     *  <p>It also hands {@code BlendMode.lastApplied} back as it found it. Our program's blend is one nobody else
+     *  declares, and our fixed buffers flush near the end of the world pass, so without this it is still the
+     *  "last applied" mode when later code applies a shader. Citadel's post-effect blit (Alex's Caves Raycat
+     *  glow, among others) sets an additive blend and then applies vanilla's blit_screen; apply() only skips
+     *  re-setting blit_screen's srcalpha/1-srcalpha blend when lastApplied already equals it, which is the
+     *  normal state of a vanilla frame. With ours in there, the additive blend was replaced by an alpha blend
+     *  and the effect target's opaque black covered the screen. Third person only, because a first-person
+     *  held item draws after the world pass. */
     public static final RenderStateShard.ShaderStateShard GLINT_SHADER_SHARD =
-            new RenderStateShard.ShaderStateShard(CustomGlintRenderer::resolveGlintShader);
+            new RenderStateShard.ShaderStateShard(CustomGlintRenderer::resolveGlintShader) {
+                private BlendMode before; // render thread only, and glint draws never nest
+                @Override public void setupRenderState() {
+                    before = BlendMode.lastApplied;
+                    super.setupRenderState();
+                }
+                @Override public void clearRenderState() {
+                    super.clearRenderState();
+                    BlendMode.lastApplied = before;
+                }
+            };
 
     /**
      * LOAD-BEARING: which glint program to bind, decided per draw against Iris's own gate.
