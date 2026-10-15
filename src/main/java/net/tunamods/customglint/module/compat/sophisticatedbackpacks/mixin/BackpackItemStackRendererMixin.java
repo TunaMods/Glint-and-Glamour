@@ -54,7 +54,7 @@ public class BackpackItemStackRendererMixin {
     private static void cg_apply(ItemStack stack, PoseStack pose, MultiBufferSource buffer,
             int light, int overlay) {
         if (CustomGlintRenderer.IN_OUTLINE.get()) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return;
 
         ItemRenderer ir = Minecraft.getInstance().getItemRenderer();

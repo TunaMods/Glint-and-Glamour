@@ -64,7 +64,7 @@ public class RenderTrollWeaponMixin {
         Model model = cg_getModel(this, "model");
         if (model == null) return;
 
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return;
 
         CustomGlint.Layer[] layers = glint.layers();

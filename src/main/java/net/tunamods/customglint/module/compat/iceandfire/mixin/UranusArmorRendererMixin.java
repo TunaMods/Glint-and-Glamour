@@ -61,7 +61,7 @@ public interface UranusArmorRendererMixin {
             EquipmentSlot slot, int light, ItemStack stack, HumanoidModel defaultModel, CallbackInfo ci,
             @Local(ordinal = 1) HumanoidModel armorModel) {
         if (CustomGlintRenderer.IN_OUTLINE.get()) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         boolean glow = CustomGlint.hasGlowEffect(stack);
         if (glint == null && !glow) return;
 

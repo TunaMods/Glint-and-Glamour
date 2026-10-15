@@ -82,7 +82,7 @@ public class ArmorDecorationLayerMixin {
         CG_LAST_PARTS.set(parts);
         ItemStack stack = CG_STACK.get();
         if (stack == null || stack.isEmpty()) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         boolean glowing = CustomGlint.hasGlowEffect(stack);
         if (glint == null && !glowing) return;
         // Capture the glow-outline silhouette for the decoration (no generic tee reaches EK's

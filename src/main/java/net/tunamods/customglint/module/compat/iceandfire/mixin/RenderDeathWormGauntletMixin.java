@@ -59,7 +59,7 @@ public class RenderDeathWormGauntletMixin {
     private void cg_apply(ItemStack stack, ItemDisplayContext ctx, PoseStack pose,
             MultiBufferSource buffer, int light, int overlay, CallbackInfo ci) {
         if (CustomGlintRenderer.IN_OUTLINE.get()) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return;
         Model model = cg_getModel(this, "MODEL");
         if (model == null) return;

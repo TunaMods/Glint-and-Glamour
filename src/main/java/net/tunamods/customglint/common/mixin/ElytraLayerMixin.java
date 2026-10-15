@@ -90,7 +90,7 @@ public class ElytraLayerMixin {
         // Honor the layer's own shouldRender so subclass layers (e.g. Mekanism's MekanismElytraLayer,
         // which only renders HDPE elytra) don't double-draw glint on a vanilla elytra.
         if (!((ElytraLayer)self).shouldRender(stack, entity)) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return; // glow outline is captured by the in-phase tee redirect above
 
         CustomGlint.Layer[] layers = glint.layers();

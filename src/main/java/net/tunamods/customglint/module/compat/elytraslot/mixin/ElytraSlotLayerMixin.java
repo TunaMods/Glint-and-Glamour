@@ -84,7 +84,7 @@ public class ElytraSlotLayerMixin {
         }
         if (stack == null || stack.isEmpty()) return;
 
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         boolean glowing = CustomGlint.hasGlowEffect(stack);
         if (glint == null && !glowing) return;
 

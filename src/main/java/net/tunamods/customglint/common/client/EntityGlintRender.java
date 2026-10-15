@@ -322,7 +322,7 @@ public final class EntityGlintRender {
         if (stack == null || stack.isEmpty()) return false;
         if (CustomGlint.hasGlowEffect(stack)) return true;
         if (!CustomGlintRenderer.isShaderPackActive()) return false;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         return glint != null && hasChromaticLayer(glint);
     }
 
@@ -338,7 +338,7 @@ public final class EntityGlintRender {
                     GlowOutlineRenderer.glowKeyFor(entity, category), category, 0);
         }
         if (CustomGlintRenderer.isShaderPackActive()) {
-            CustomGlint.Data glint = CustomGlint.read(stack);
+            CustomGlint.Data glint = CustomGlint.readForRender(stack);
             if (glint != null) queueChromaticLayers(cap, tex, glint, 1.0f);
         }
     }
