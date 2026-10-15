@@ -28,9 +28,9 @@ Forge (1.20.1):
 ```gradle
 repositories { maven { url = "https://raw.githubusercontent.com/TunaMods/Glint-and-Glamour/1.20.1/mcmodsrepo" } }
 dependencies {
-    compileOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.7.0")
-    runtimeOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.7.0")
-    jarJar(group: 'net.tunamods.customglint', name: 'glint-and-glamour-api', version: '[1.7.0,2.0)')
+    compileOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.8.0")
+    runtimeOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.8.0")
+    jarJar(group: 'net.tunamods.customglint', name: 'glint-and-glamour-api', version: '[1.8.0,2.0)')
 }
 ```
 
@@ -41,8 +41,8 @@ repositories { maven { url = "https://raw.githubusercontent.com/TunaMods/Glint-a
 dependencies {
     jarJar(implementation("net.tunamods.customglint:glint-and-glamour-api")) {
         version {
-            strictly "[1.7.0,2.0)"
-            prefer "1.7.0"
+            strictly "[1.8.0,2.0)"
+            prefer "1.8.0"
         }
     }
 }
@@ -55,8 +55,8 @@ repositories { maven { url = "https://raw.githubusercontent.com/TunaMods/Glint-a
 dependencies {
     jarJar(implementation("net.tunamods.customglint:glint-and-glamour-api")) {
         version {
-            strictly "[1.7.0,2.0)"
-            prefer "1.7.0"
+            strictly "[1.8.0,2.0)"
+            prefer "1.8.0"
         }
     }
 }
