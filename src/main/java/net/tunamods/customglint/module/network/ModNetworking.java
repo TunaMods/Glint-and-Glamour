@@ -6,7 +6,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class ModNetworking {
 
-    private static final String PROTOCOL = "1";
+    // Bumped whenever a payload is added or its format changes, so a mismatched client is refused at login with
+    // a clear message instead of failing on the first unknown payload.
+    private static final String PROTOCOL = "2";
 
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(ModNetworking::onRegisterPayloads);
@@ -47,5 +49,7 @@ public class ModNetworking {
         registrar.playToServer(GlintWandDeleteBlueprintPacket.TYPE, GlintWandDeleteBlueprintPacket.STREAM_CODEC, GlintWandDeleteBlueprintPacket::handle);
         // GlintWandRequestBlueprintsPacket C→S  wand Import open: request the current shared blueprint pool
         registrar.playToServer(GlintWandRequestBlueprintsPacket.TYPE, GlintWandRequestBlueprintsPacket.STREAM_CODEC, GlintWandRequestBlueprintsPacket::handle);
+        // GlintRulesSyncPacket S→C  the server's item rules (/glint rule item), on join and after every change
+        registrar.playToClient(GlintRulesSyncPacket.TYPE, GlintRulesSyncPacket.STREAM_CODEC, GlintRulesSyncPacket::handle);
     }
 }

@@ -22,6 +22,8 @@ import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -50,6 +52,7 @@ import net.tunamods.customglint.module.menu.ModMenuTypes;
 import net.tunamods.customglint.module.network.GlintDesignSyncPacket;
 import net.tunamods.customglint.module.network.ModNetworking;
 import net.tunamods.customglint.module.recipe.ModRecipes;
+import net.tunamods.customglint.module.rule.GlintRules;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -104,6 +107,19 @@ public class CustomGlintMod {
         NeoForge.EVENT_BUS.addListener(this::onPlayerJoin);
         NeoForge.EVENT_BUS.addListener(this::onItemCrafted);
         NeoForge.EVENT_BUS.addListener(this::onItemPickup);
+        NeoForge.EVENT_BUS.addListener(this::onServerStarting);
+        NeoForge.EVENT_BUS.addListener(this::onLivingDrops);
+    }
+
+    /** Load the glint rules file ({@code /glint rule}) before anyone joins or any loot rolls. */
+    private void onServerStarting(ServerStartingEvent event) {
+        GlintRules.load();
+    }
+
+    /** DROP rules ({@code /glint rule drop}): glint the matching items a mob type drops. Runs after the mob's
+     *  loot table, so a LOOT rule on that table has already had its turn and is not overwritten. */
+    private void onLivingDrops(LivingDropsEvent event) {
+        GlintRules.applyDrops(event.getEntity().getType(), event.getDrops());
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
@@ -198,8 +214,10 @@ public class CustomGlintMod {
     }
 
     private void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (!dataPackDesigns.isEmpty() && event.getEntity() instanceof ServerPlayer player) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!dataPackDesigns.isEmpty()) {
             PacketDistributor.sendToPlayer(player, new GlintDesignSyncPacket(new ArrayList<>(dataPackDesigns)));
         }
+        GlintRules.syncTo(player); // item rules render client-side, so every client needs the current set
     }
 }

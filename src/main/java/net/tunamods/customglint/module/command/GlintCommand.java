@@ -138,6 +138,7 @@ public class GlintCommand {
                 .then(Commands.argument("name", StringArgumentType.word())
                     .executes(ctx -> export(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
+            .then(GlintRuleCommand.node())
             .then(Commands.literal("entity")
                 .then(Commands.argument("targets", EntityArgument.entities())
                     .then(Commands.literal("apply")

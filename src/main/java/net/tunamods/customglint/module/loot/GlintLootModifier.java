@@ -12,6 +12,7 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.neoforge.common.loot.LootModifier;
 import net.tunamods.customglint.common.CustomGlint;
+import net.tunamods.customglint.module.rule.GlintRules;
 
 import java.util.Map;
 import java.util.function.Supplier;
@@ -30,12 +31,15 @@ public class GlintLootModifier extends LootModifier {
     protected ObjectArrayList<ItemStack> doApply(ObjectArrayList<ItemStack> generatedLoot, LootContext context) {
         Identifier tableId = context.getQueriedLootTableId();
         Map<Item, CustomGlint.Data> glints = CustomGlint.LOOT_GLINTS.get(tableId);
-        if (glints == null) return generatedLoot;
-        for (ItemStack stack : generatedLoot) {
-            CustomGlint.Data data = glints.get(stack.getItem());
-            if (data != null)
-                CustomGlint.write(stack, data.layers());
+        if (glints != null) {
+            for (ItemStack stack : generatedLoot) {
+                CustomGlint.Data data = glints.get(stack.getItem());
+                if (data != null)
+                    CustomGlint.write(stack, data.layers());
+            }
         }
+        // Pack-author rules (/glint rule loot) run after the API registry and skip anything it already glinted.
+        if (tableId != null) GlintRules.applyLoot(tableId, generatedLoot);
         return generatedLoot;
     }
 

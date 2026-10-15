@@ -4,6 +4,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.tunamods.customglint.common.CustomGlint;
 import net.tunamods.customglint.module.menu.ModMenuTypes;
 import net.tunamods.customglint.module.gui.GlintBagScreen;
 import net.tunamods.customglint.module.gui.GlintTableScreen;
@@ -11,6 +12,8 @@ import net.tunamods.customglint.module.network.GlintDesignSyncPacket;
 import net.tunamods.customglint.module.network.GlintPrintedSyncPacket;
 import net.tunamods.customglint.module.network.GlintServerBlueprintsSyncPacket;
 import net.tunamods.customglint.module.network.GlintStoredSyncPacket;
+
+import java.util.Map;
 
 /** Client-only wiring for the Glint Table: binds the menu type to its screen. */
 public final class GlintTableClientInit {
@@ -27,6 +30,7 @@ public final class GlintTableClientInit {
             GlintDesignSyncPacket.clearClient();
             GlintTableScreen.clearSavedBuild();
             GlintTableModelClient.clearTracked();
+            CustomGlint.setRuleItemGlints(Map.of()); // the next server sends its own item rules on join
         });
     }
 
