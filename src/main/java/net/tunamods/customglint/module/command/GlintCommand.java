@@ -138,6 +138,7 @@ public class GlintCommand {
                 .then(Commands.argument("name", StringArgumentType.word())
                     .executes(ctx -> export(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
+            .then(GlintRuleCommand.node())
             .then(Commands.literal("entity")
                 .then(Commands.argument("targets", EntityArgument.entities())
                     .then(Commands.literal("apply")
@@ -370,6 +371,10 @@ public class GlintCommand {
             GlintTrimItem.setScrollOffset(trim, layer.scrollOffset());
             GlintTrimItem.setPattern(trim, layer.design());
             GlintTrimItem.setGlowing(trim, CustomGlint.isGlowing(held));
+            // setPattern/setGlowing re-emit the preview as a sequential layer; write the real one last so the
+            // simultaneous flag and seed survive.
+            CustomGlint.write(trim, layers);
+            GlintTrimItem.setSeed(trim, layer.seed());
         } else {
             // Multi-layer: set flat tags from layer 0 for display, then copy the full glint tag verbatim
             CustomGlint.Layer layer0 = layers[0];

@@ -79,6 +79,6 @@ public class ArtifactRenderMixin {
     @ModifyVariable(method = RENDER_MODEL_WITH_FOIL, at = @At("HEAD"), argsOnly = true, ordinal = 0, require = 0, remap = false)
     private static boolean cg_suppressVanillaFoil(boolean hasFoil) {
         if (!hasFoil || !ArtifactGlint.isArmed()) return hasFoil;
-        return CustomGlint.read(ArtifactGlint.current()) == null;
+        return CustomGlint.readForRender(ArtifactGlint.current()) == null;
     }
 }

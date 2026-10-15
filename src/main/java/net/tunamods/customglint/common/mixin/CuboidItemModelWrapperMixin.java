@@ -47,7 +47,7 @@ public class CuboidItemModelWrapperMixin {
             @Local(argsOnly = true) ItemStackRenderState output,
             @Local(argsOnly = true) ItemStack item,
             @Local(argsOnly = true) ItemDisplayContext displayContext) {
-        boolean hasGlint = CustomGlint.read(item) != null;
+        boolean hasGlint = CustomGlint.readForRender(item) != null;
         if (hasGlint && displayContext == ItemDisplayContext.GUI && !original) {
             // Flat GUI icon: cache the plain base, scroll the glint live as an overlay.
             ((CgGlintHolder) output).customglint$setGuiGlintOverlay(true);

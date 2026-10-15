@@ -30,7 +30,7 @@ public class ItemModelResolverMixin {
             Level level, ItemOwner owner, int seed, CallbackInfo ci) {
         // One component read instead of read()/isGlowing()×N/getGlowColors()×N on the same stack, this
         // runs for every item render-state rebuild (mirrors EquipmentLayerRendererMixin's single readState).
-        CustomGlint.GlintState state = CustomGlint.readState(item);
+        CustomGlint.GlintState state = CustomGlint.readStateForRender(item);
         CustomGlint.Data glint = state.data();
         boolean glowing = state.glowing();
         int[] glowColors = state.glowColors(); // never null; consumers null/empty-check either way

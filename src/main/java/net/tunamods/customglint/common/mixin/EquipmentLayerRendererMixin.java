@@ -65,7 +65,7 @@ public class EquipmentLayerRendererMixin {
         require = 0
     )
     private boolean cg_suppressVanillaFoil(boolean original, @Local(argsOnly = true) ItemStack itemStack) {
-        return original && CustomGlint.read(itemStack) == null;
+        return original && CustomGlint.readForRender(itemStack) == null;
     }
 
     @Inject(method = RENDER_LAYERS, at = @At("RETURN"), require = 0)
@@ -77,7 +77,7 @@ public class EquipmentLayerRendererMixin {
         if (layers.isEmpty()) return;
         // One component fetch covers glint + both glow flags below (each accessor would otherwise re-fetch
         // the GlintState component), this fires per equipment layer per wearer per frame.
-        var glintState = CustomGlint.readState(itemStack);
+        var glintState = CustomGlint.readStateForRender(itemStack);
         CustomGlint.Data glint = glintState.data();
         // Elytra/capes (WINGS) are thin double-sided meshes AND the two folded wings overlap along the spine.
         // In phase the EQUAL depth test already keeps only the nearest surface, but the post-shader overlay
