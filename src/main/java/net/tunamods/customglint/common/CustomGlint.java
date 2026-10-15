@@ -398,6 +398,26 @@ public final class CustomGlint {
         return itemState(stack).data();
     }
 
+    /** Render-side {@link #readState}: the stack's own state, with its glint layers filled in from the
+     *  type-wide glint ({@link #getItemGlint}) when the stack has none. Glow fields always stay the stack's own.
+     *  Only the render paths call this. Server logic uses {@link #readState} / {@link #read}, which never fall
+     *  back, so a type-wide glint is never written to the component, copied by a recipe, or counted by the
+     *  Glint Table. */
+    public static GlintState readStateForRender(ItemStack stack) {
+        GlintState own = itemState(stack);
+        if (own.data() != null) return own;
+        Data type = getItemGlint(stack.getItem());
+        return type == null ? own
+                : new GlintState(type, own.glowing(), own.glowColors(), own.glowSpeed(), own.glowInterp());
+    }
+
+    /** Render-side {@link #read}: the stack's own glint, else its item's type-wide glint. See
+     *  {@link #readStateForRender}. */
+    @Nullable
+    public static Data readForRender(ItemStack stack) {
+        return readStateForRender(stack).data();
+    }
+
     public static boolean has(ItemStack stack) {
         return !itemState(stack).isEmpty();
     }
@@ -568,6 +588,43 @@ public final class CustomGlint {
 
     public static void registerLootGlint(Identifier lootTable, Item item, Identifier design, int[] colors) {
         registerLootGlint(lootTable, item, design, colors, 1.0f, true, 1.0f, true);
+    }
+
+    // ── Item-type glints ──────────────────────────────────────────────────────
+    //
+    // Every stack of a registered item renders with its glint, with nothing written to the component: /give,
+    // creative, other mods' loot and items that existed before the registration all show it. A stack's own
+    // glint always wins. Read only through readForRender / readStateForRender, so it is render-side only
+    // (layers, no glow outline).
+    //
+    // Two sources. ITEM_GLINTS is the public registry for mods, filled from code at load. The rule map is
+    // owned by the full mod's /glint rule item command: the server syncs it to each client, which replaces it
+    // wholesale through setRuleItemGlints. Rules take precedence, so a pack author can override a mod.
+
+    public static final Map<Item, Data> ITEM_GLINTS = new HashMap<>();
+
+    public static void registerItemGlint(Item item, Data data) {
+        ITEM_GLINTS.put(item, data);
+    }
+
+    public static void registerItemGlint(Item item, Identifier design, int[] colors) {
+        registerItemGlint(item, oneLayer(design, colors, 1.0f, true, 1.0f, true));
+    }
+
+    /** Synced copy of the server's item rules. Replaced, never mutated, so the render thread can read it while
+     *  a sync lands without locking. */
+    private static volatile Map<Item, Data> ruleItemGlints = Map.of();
+
+    /** Replaces the item rules (the full mod's sync packet, and an empty map on disconnect). */
+    public static void setRuleItemGlints(Map<Item, Data> glints) {
+        ruleItemGlints = Map.copyOf(glints);
+    }
+
+    /** The type-wide glint for {@code item}: an item rule first, then {@link #ITEM_GLINTS}, else null. */
+    @Nullable
+    public static Data getItemGlint(Item item) {
+        Data rule = ruleItemGlints.get(item);
+        return rule != null ? rule : ITEM_GLINTS.get(item);
     }
 
     // ── Entity glint API ──────────────────────────────────────────────────────

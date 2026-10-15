@@ -73,7 +73,7 @@ public final class ArtifactGlint {
         FANNED.set(Boolean.TRUE);
 
         // One component fetch covers the glint data and both glow signals below.
-        CustomGlint.GlintState glintState = CustomGlint.readState(stack);
+        CustomGlint.GlintState glintState = CustomGlint.readStateForRender(stack);
         CustomGlint.Data glint = glintState.data();
 
         if (glint != null) {

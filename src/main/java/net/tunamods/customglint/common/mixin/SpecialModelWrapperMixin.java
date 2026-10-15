@@ -34,7 +34,7 @@ public class SpecialModelWrapperMixin {
     @Inject(method = "update", at = @At("RETURN"), require = 0)
     private void cg_animateGlint(ItemStackRenderState output, ItemStack item, ItemModelResolver resolver,
             ItemDisplayContext displayContext, ClientLevel level, ItemOwner owner, int seed, CallbackInfo ci) {
-        if (item.isEmpty() || CustomGlint.read(item) == null) return;
+        if (item.isEmpty() || CustomGlint.readForRender(item) == null) return;
         if (displayContext == ItemDisplayContext.GUI) {
             // The 3D GUI-atlas bake doesn't draw our special-item glint into the cached icon (the deferred
             // submit hook that glints held/world shields never fires during the atlas render). Rather than
