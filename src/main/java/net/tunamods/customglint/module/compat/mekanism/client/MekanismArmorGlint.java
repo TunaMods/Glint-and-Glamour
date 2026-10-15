@@ -64,7 +64,7 @@ public final class MekanismArmorGlint {
     public static VertexConsumer wrap(VertexConsumer base, RenderType rt) {
         ItemStack stack = CURRENT_STACK.get();
         if (stack == null || stack.isEmpty()) return base;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         boolean glowing = CustomGlint.hasGlowEffect(stack);
         if (glint == null && !glowing) return base;
 

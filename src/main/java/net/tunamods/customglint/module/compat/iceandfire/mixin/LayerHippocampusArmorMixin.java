@@ -122,7 +122,7 @@ public class LayerHippocampusArmorMixin {
 
         ItemStack stack = MountArmorCache.get(entity.getId());
         boolean glow = CustomGlint.hasGlowEffect(stack);
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null && !glow) return;
 
         EntityModel<?> model = cg_getParentModel();

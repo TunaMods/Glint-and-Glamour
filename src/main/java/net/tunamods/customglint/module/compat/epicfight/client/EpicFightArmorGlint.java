@@ -101,7 +101,7 @@ public final class EpicFightArmorGlint {
                 || c.stack.isEmpty() || !(c.stack.getItem() instanceof ArmorItem)) {
             return original;
         }
-        CustomGlint.Data glint = CustomGlint.read(c.stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(c.stack);
         boolean glow = CustomGlint.hasGlowEffect(c.stack) && !c.entity.isInvisible();
         if (glint == null && !glow) return original;
         return new ArmorGlintSource(original, c, glint, glow);

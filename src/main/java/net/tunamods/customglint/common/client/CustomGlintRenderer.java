@@ -1915,7 +1915,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
             return wallClock ? computeAnimatedGlowColorGui(glowColors, speed, interpolate)
                              : computeAnimatedGlowColor(glowColors, speed, interpolate, phaseFraction);
         }
-        Data glint = CustomGlint.read(stack);
+        Data glint = CustomGlint.readForRender(stack);
         return glint != null ? computeAnimatedColor(glint, 0, phaseFraction) : 0xFFFFFFFF;
     }
 

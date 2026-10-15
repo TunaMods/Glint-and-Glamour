@@ -52,7 +52,7 @@ public final class ImmersiveArmorsGlint {
         CURRENT_ENTITY.remove();
         CURRENT_PIECE.remove();
         if (stack == null || stack.isEmpty()) return;
-        if (CustomGlint.read(stack) == null && !CustomGlint.hasGlowEffect(stack)) return;
+        if (CustomGlint.readForRender(stack) == null && !CustomGlint.hasGlowEffect(stack)) return;
         CURRENT_STACK.set(stack);
         CURRENT_ENTITY.set(entity);
         CURRENT_PIECE.set(piece);
@@ -65,7 +65,7 @@ public final class ImmersiveArmorsGlint {
      *  IA would, plus the glint fanned into the same submission. */
     public static void fanGlint(Model model, PoseStack pose, VertexConsumer base, int light, int overlay, int color) {
         ItemStack stack = CURRENT_STACK.get();
-        CustomGlint.Data glint = stack == null ? null : CustomGlint.read(stack);
+        CustomGlint.Data glint = stack == null ? null : CustomGlint.readForRender(stack);
         if (glint == null) {
             model.renderToBuffer(pose, base, light, overlay, color); // unchanged
             return;
@@ -127,7 +127,7 @@ public final class ImmersiveArmorsGlint {
         }
         // Under a pack the in-phase chromatic is hijacked; re-render the piece into the post-Iris overlay.
         if (CustomGlintRenderer.isShaderPackActive()) {
-            CustomGlint.Data glint = CustomGlint.read(stack);
+            CustomGlint.Data glint = CustomGlint.readForRender(stack);
             if (glint != null) {
                 CustomGlint.Layer[] cls = glint.layers();
                 for (int li = 0; li < cls.length; li++) {

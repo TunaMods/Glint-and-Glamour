@@ -114,7 +114,7 @@ public class HumanoidArmorLayerMixin {
             LivingEntity entity, EquipmentSlot slot, int packedLight, HumanoidModel model) {
         ItemStack stack = entity.getItemBySlot(slot);
         if (stack.isEmpty() || !(stack.getItem() instanceof ArmorItem)) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return; // glow outline is captured by the renderModel tee above
 
         Model rendererModel = IClientItemExtensions.of(stack).getGenericArmorModel(entity, stack, slot, model);

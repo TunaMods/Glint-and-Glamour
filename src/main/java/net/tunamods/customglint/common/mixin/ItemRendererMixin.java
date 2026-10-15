@@ -124,7 +124,7 @@ public class ItemRendererMixin {
         if (CustomGlintRenderer.IN_OUTLINE.get()) return buffer.getBuffer(renderType);
         ItemStack stack = CustomGlintRenderer.CURRENT_ITEM_STACK.get();
         if (stack == null) return null;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return null;
 
         // Batch the glint into the private deferred source so many same-config icons draw in ONE endBatch
@@ -275,7 +275,7 @@ public class ItemRendererMixin {
         boolean glow = CustomGlint.hasGlowEffect(stack);
         // Under a shader pack a chromatic item can't draw in-phase (hijacked); capture its quads here for the
         // post-Iris overlay drain (world items only for now; GUI / first-person / special items deferred).
-        CustomGlint.Data cgGlint = CustomGlintRenderer.isShaderPackActive() ? CustomGlint.read(stack) : null;
+        CustomGlint.Data cgGlint = CustomGlintRenderer.isShaderPackActive() ? CustomGlint.readForRender(stack) : null;
         boolean chromaPack = cgGlint != null && cg_hasChromatic(cgGlint);
         if (!glow && !chromaPack) return;
 

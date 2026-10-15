@@ -92,7 +92,7 @@ public class LayerDragonArmorMixin {
         for (EquipmentSlot s : CG_SLOTS) {
             ItemStack stack = entity.getItemBySlot(s);
             if (CG_GLINT.get() == null) {
-                CustomGlint.Data dat = CustomGlint.read(stack);
+                CustomGlint.Data dat = CustomGlint.readForRender(stack);
                 if (dat != null) { CG_ACTIVE.set(stack); CG_GLINT.set(dat); }
             }
             if (CG_GLOW.get() == null && CustomGlint.hasGlowEffect(stack)) {

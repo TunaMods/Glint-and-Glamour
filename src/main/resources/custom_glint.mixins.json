@@ -15,6 +15,7 @@
     "HumanoidArmorLayerMixin",
     "ItemInHandRendererMixin",
     "ItemRendererMixin",
+    "ItemStackFoilMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin",
     "MushroomCowMushroomLayerMixin",

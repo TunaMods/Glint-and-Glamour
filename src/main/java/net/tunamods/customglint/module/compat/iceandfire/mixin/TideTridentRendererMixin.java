@@ -36,7 +36,7 @@ public class TideTridentRendererMixin {
     private void cg_carryGlint(ItemRenderer renderer, ItemStack invStack, ItemDisplayContext ctx,
             int light, int overlay, PoseStack pose, MultiBufferSource buffer, Level level, int seed,
             @Local(argsOnly = true) ItemStack original) {
-        CustomGlint.Data glint = CustomGlint.read(original);
+        CustomGlint.Data glint = CustomGlint.readForRender(original);
         if (glint != null) CustomGlint.write(invStack, glint.layers());
         renderer.renderStatic(invStack, ctx, light, overlay, pose, buffer, level, seed);
     }

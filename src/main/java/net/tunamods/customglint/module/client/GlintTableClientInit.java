@@ -13,6 +13,7 @@ import net.tunamods.customglint.module.menu.ModMenuTypes;
 import net.tunamods.customglint.module.network.GlintPrintedSyncPacket;
 import net.tunamods.customglint.module.network.GlintStoredSyncPacket;
 
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /** Client-only wiring for the Glint Table: binds the menu type to its screen + drops the sync mirrors on
@@ -27,6 +28,7 @@ public final class GlintTableClientInit {
             GlintPrintedSyncPacket.clearClient();
             GlintTableScreen.clearSavedBuild();
             GlintTableModelClient.clearTracked();
+            CustomGlint.setRuleItemGlints(Map.of()); // the next server sends its own item rules on join
         });
         // Feed the shared GUI design atlas the data-pack-inclusive design list (built-ins + synced designs), so
         // every trim icon on a palette batches through the one atlas RenderType instead of a draw per design.

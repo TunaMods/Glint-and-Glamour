@@ -95,7 +95,7 @@ public class HorseArmorLayerMixin {
             int packedLight, Horse entity, HorseModel<Horse> model) {
         ItemStack stack = entity.getBodyArmorItem();
         if (stack.isEmpty()) return;
-        CustomGlint.Data glint = CustomGlint.read(stack);
+        CustomGlint.Data glint = CustomGlint.readForRender(stack);
         if (glint == null) return; // glow outline is captured by the in-phase tee redirect above
         if (!(stack.getItem() instanceof AnimalArmorItem aa)
                 || aa.getBodyType() != AnimalArmorItem.BodyType.EQUESTRIAN) return;

@@ -18,7 +18,9 @@ import java.util.function.BiConsumer;
  */
 public class ModNetworking {
 
-    private static final String PROTOCOL = "1";
+    // Bumped whenever a payload is added or its format changes, so a mismatched client is refused at login with
+    // a clear message instead of failing on the first unknown payload.
+    private static final String PROTOCOL = "2";
 
     /** Upper bound on the pre-sized capacity a sync packet may allocate from a wire-declared count. */
     private static final int MAX_SYNC_ENTRIES = 1024;
@@ -98,5 +100,9 @@ public class ModNetworking {
         registrar.playToServer(GlintWandDeleteBlueprintPacket.TYPE, GlintWandDeleteBlueprintPacket.STREAM_CODEC, GlintWandDeleteBlueprintPacket::handle);
         // GlintWandRequestBlueprintsPacket C→S  wand Import open: request the current shared blueprint pool
         registrar.playToServer(GlintWandRequestBlueprintsPacket.TYPE, GlintWandRequestBlueprintsPacket.STREAM_CODEC, GlintWandRequestBlueprintsPacket::handle);
+
+        // Glint rules (/glint rule)
+        // GlintRulesSyncPacket  S→C  the server's item rules, on join and after every rule change or reload
+        registrar.playToClient(GlintRulesSyncPacket.TYPE, GlintRulesSyncPacket.STREAM_CODEC, GlintRulesSyncPacket::handle);
     }
 }
