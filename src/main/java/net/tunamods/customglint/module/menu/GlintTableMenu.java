@@ -612,7 +612,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (named && !name.isEmpty() && (nameDye != null || nameRainbow)) container.removeItem(SLOT_NAME_DYE, 1);
         if (extraLayers > 0) container.removeItem(SLOT_LAYER_TEAR, extraLayers);
 
-        if (!sp.addItem(trim)) sp.drop(trim, false);
+        ItemStack given = trim.copy(); // addItem empties the stack it is handed, and trim is read below
+        if (!sp.addItem(given)) sp.drop(given, false);
         storePrinted(sp, trim);
 
         // A trim printed with all 8 colors earns "Ratatouille"; a layered trim "Like Ogres", the full 8 layers
@@ -666,7 +667,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (rainbowNeeded > 0) container.removeItem(SLOT_RAINBOW_DYE, rainbowNeeded);
         if (named && !name.isEmpty() && (nameDye != null || nameRainbow)) container.removeItem(SLOT_NAME_DYE, 1);
 
-        if (!sp.addItem(trim)) sp.drop(trim, false);
+        ItemStack given = trim.copy(); // addItem empties the stack it is handed, and trim is read below
+        if (!sp.addItem(given)) sp.drop(given, false);
         storePrinted(sp, trim);
     }
 
