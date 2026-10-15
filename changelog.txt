@@ -1,7 +1,18 @@
 [1.8.0]
 
+Added:
+- Glint rules: give an item a permanent glint you designed, no code needed. Put the glint on an item, hold it, and run /glint rule loot <loot table> (glinted whenever that table drops it, like a boss drop or a chest), /glint rule drop <mob> (glinted whenever that mob drops it), or /glint rule item (every copy of the item shows it, wherever it came from). /glint rule list shows them, /glint rule remove <item> deletes an item's rules (add loot, drop or item to remove just that kind), and /glint rule reload picks up hand edits to the file
+- Rules save to config/glint-and-glamour/rules.json, so a modpack can set them up in a test world and ship the file
+- For mod developers: CustomGlint.registerItemGlint gives every stack of an item a glint at render time, smithed and /give'd copies included. Render code reads it through CustomGlint.readForRender / readStateForRender
+
+Altered:
+- A 1.8.0 server and client must match. An older client joining is turned away at login with a version message
+
 Fixed:
 - A mod that bundles only the Glint & Glamour API no longer crashes the client on the first resource reload. The API jar now ships the shaders its renderer loads
+- Printing at the Glint Table now grants the trim advancements, unlocks a matching imported trim, and adds the trim to your printed library. Before, this only worked when your inventory was full
+- /glint extract keeps a single-layer glint's simultaneous setting and chromatic pattern
+- The server now clamps the opacity a Glint Table print asks for, so an out-of-range value can no longer skip the glass cost
 
 [1.7.0]
 
