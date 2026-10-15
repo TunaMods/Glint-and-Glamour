@@ -60,12 +60,12 @@ import java.util.stream.Collectors;
 @OnlyIn(Dist.CLIENT)
 public class GlintEditorScreen extends Screen {
 
-    // ── Layout constants ────────────────────────────────────────────────────
+    // Layout constants
     private static final int PANEL_W    = 300;
     private static final int PANEL_H    = 270;
     private static final int PREVIEW_SZ = 80;
 
-    // ── Active skin ───────────────────────────────────────────────────────────
+    // Active skin
     // The window frame, divider and preview recess are baked into the skin PNG; the palette colours every
     // element the screen draws on top (buttons, swatches, labels). Persisted in GlintGuiConfig.
     private GlintWandSkin skin = GlintWandSkin.DEFAULT;
@@ -111,7 +111,7 @@ public class GlintEditorScreen extends Screen {
         return ITEM_ICON_CACHE.computeIfAbsent(item, ItemStack::new);
     }
 
-    // ── State ───────────────────────────────────────────────────────────────
+    // State
     private final InteractionHand wandHand;
 
     // per-layer state
@@ -142,21 +142,21 @@ public class GlintEditorScreen extends Screen {
     private Item      previewItem  = Items.NETHERITE_SWORD;
     private ItemStack previewStack = ItemStack.EMPTY;
 
-    // ── Item-picker overlay ─────────────────────────────────────────────────
+    // Item-picker overlay
     private boolean    showPicker    = false;
     private List<Item> allItems      = null;
     private List<Item> filteredItems = new ArrayList<>();
     private int        pickerScroll  = 0;
     private static final int VISIBLE_ROWS = 8, ROW_H = 18;
 
-    // ── Design-picker overlay ───────────────────────────────────────────────
+    // Design-picker overlay
     private boolean      showDesignPicker = false;
     private List<String> filteredDesigns  = new ArrayList<>();
     private int          designScroll     = 0;
     private EditBox      designSearchBox;
     private static final int DESIGN_ROWS = 10, DESIGN_ROW_H = 13;
 
-    // ── Glint import overlay ──────────────────────────────────────────────────
+    // Glint import overlay
     // The list merges two sources: the player's personal trims (local config/glint-and-glamour/trims/*.json,
     // tracked in localGlints) and the server's shared blueprint pool (GlintServerBlueprintsSyncPacket.
     // CLIENT_SERVER_BLUEPRINTS). localGlints doubles as the "is this entry a local file?" test used when
@@ -175,7 +175,7 @@ public class GlintEditorScreen extends Screen {
     /** Which picker's scrollbar the mouse is currently dragging: 0 none, 1 design, 2 import, 3 item. */
     private int draggingSb = 0;
 
-    // ── Widget refs ─────────────────────────────────────────────────────────
+    // Widget refs
     private EditBox hexBox, rBox, gBox, bBox, aBox;
     private EditBox searchBox;
     private EditBox trimNameBox, nameHexBox;
@@ -183,7 +183,7 @@ public class GlintEditorScreen extends Screen {
 
     private int px, py;
 
-    // ── Construction ────────────────────────────────────────────────────────
+    // Construction
 
     public GlintEditorScreen(InteractionHand hand) {
         super(Component.translatable("screen.customglint.glint_editor.title"));
@@ -227,7 +227,7 @@ public class GlintEditorScreen extends Screen {
         layerScrollOffsets.add(0.0f);
     }
 
-    // ── Color helpers ────────────────────────────────────────────────────────
+    // Color helpers
 
     private List<Integer> currentColors() {
         return layerColors.get(selectedLayer);
@@ -287,7 +287,7 @@ public class GlintEditorScreen extends Screen {
         if (aBox != null) { aBox.setResponder(null); aBox.setValue(String.valueOf(editA)); aBox.setResponder(this::onAChanged); }
     }
 
-    // ── EditBox responders ───────────────────────────────────────────────────
+    // EditBox responders
 
     private void onHexChanged(String s) {
         if (s.length() != 6) return;
@@ -321,7 +321,7 @@ public class GlintEditorScreen extends Screen {
     private void onBChanged(String s) { onChannelChanged(s, c -> editB = c, true); }
     private void onAChanged(String s) { onChannelChanged(s, c -> editA = c, false); }
 
-    // ── Preview ──────────────────────────────────────────────────────────────
+    // Preview
 
     /** Snapshot the editor's per-layer state into a {@link CustomGlint.Layer} array (preview + packets). */
     private CustomGlint.Layer[] buildLayers() {
@@ -413,7 +413,7 @@ public class GlintEditorScreen extends Screen {
         }
     }
 
-    // ── Design picker helpers ────────────────────────────────────────────────
+    // Design picker helpers
 
     private void filterDesigns(String query) {
         String lq = query.toLowerCase();
@@ -431,7 +431,7 @@ public class GlintEditorScreen extends Screen {
     private int ipX() { return px + 98; }
     private int ipY() { return py + 54; }
 
-    // ── Init ─────────────────────────────────────────────────────────────────
+    // Init
 
     @Override
     protected void init() {
@@ -692,7 +692,7 @@ public class GlintEditorScreen extends Screen {
         });
         nameHexBox.setVisible(!trimName.isEmpty());
 
-        // ── Glow color section (right column, py+218) ─────────────────────────
+        // Glow color section (right column, py+218)
         if (glowOverrideColors.isEmpty()) {
             // Auto mode, offer switch to custom
             tip(bevel(px + 162, py + 218, 82, 14,
@@ -759,7 +759,7 @@ public class GlintEditorScreen extends Screen {
         refreshPreview();
     }
 
-    // ── Item picker ───────────────────────────────────────────────────────────
+    // Item picker
 
     private void filterItems(String query) {
         if (allItems == null) return;
@@ -953,7 +953,7 @@ public class GlintEditorScreen extends Screen {
         }
     }
 
-    // ── Text helpers (flat, no drop shadow: crisp on light skins) ─────────────
+    // Text helpers (flat, no drop shadow: crisp on light skins)
 
     private void label(GuiGraphics g, Component c, int x, int y, int color) {
         g.drawString(this.font, c.getString(), x, y, 0xFF000000 | color, false);
@@ -967,7 +967,7 @@ public class GlintEditorScreen extends Screen {
         g.drawString(this.font, s, x - this.font.width(s) / 2, y, 0xFF000000 | color, false);
     }
 
-    // ── Beveled buttons (skinned widgets) ──────────────────────────────────────
+    // Beveled buttons (skinned widgets)
 
     /**
      * A skinned button backed by the widget system. The label, text colour and base face are pulled live
@@ -1041,7 +1041,7 @@ public class GlintEditorScreen extends Screen {
         return b;
     }
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // Render
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float dt) {
@@ -1087,8 +1087,9 @@ public class GlintEditorScreen extends Screen {
             label(g, Component.translatable("screen.customglint.glint_editor.glow_auto"), px + 100, py + 238, glowEnabled ? skin.labelDim : skin.btnDisabled);
         }
 
-        // Widgets (buttons + edit boxes). Do NOT call super.render(): in 1.21 Screen.render() runs
-        // renderBackground() again, whose blur pass would smear the panel/labels drawn above.
+        // Widgets (buttons + edit boxes), drawn by hand instead of super.render(). On 1.20.1 the two are the
+        // same loop; on 1.21 Screen.render() re-runs renderBackground(), whose blur would smear the panel
+        // drawn above, so the branches keep this shared form.
         for (var r : this.renderables) {
             r.render(g, mx, my, dt);
         }
@@ -1184,7 +1185,7 @@ public class GlintEditorScreen extends Screen {
         }
     }
 
-    // ── Design picker rendering ───────────────────────────────────────────────
+    // Design picker rendering
 
     private void renderDesignPicker(GuiGraphics g, int mx, int my, float dt) {
         int ox = dpX(), oy = dpY();
@@ -1265,7 +1266,7 @@ public class GlintEditorScreen extends Screen {
         importScroll = Math.max(0, Math.min(importScroll, Math.max(0, availableGlints.size() - IMPORT_ROWS)));
     }
 
-    // ── Item picker rendering ─────────────────────────────────────────────────
+    // Item picker rendering
 
     private static final int OW = 200, OH = VISIBLE_ROWS * ROW_H + 20;
 
@@ -1299,7 +1300,7 @@ public class GlintEditorScreen extends Screen {
             drawPickerScrollbar(g, sbX, listY, VISIBLE_ROWS, ROW_H, filteredItems.size(), pickerScroll, 10);
     }
 
-    // ── Input ─────────────────────────────────────────────────────────────────
+    // Input
 
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {

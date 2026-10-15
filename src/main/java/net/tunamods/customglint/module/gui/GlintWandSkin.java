@@ -31,7 +31,7 @@ class GlintWandSkin extends SkinBase {
         super(name);
     }
 
-    // ── Skins ─────────────────────────────────────────────────────────────────
+    // Skins
 
     static final GlintWandSkin DEFAULT = new GlintWandSkin("Default");
     static final GlintWandSkin DARK = new GlintWandSkin("Dark");

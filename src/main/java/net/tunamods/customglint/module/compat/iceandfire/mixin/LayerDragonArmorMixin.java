@@ -66,7 +66,7 @@ public class LayerDragonArmorMixin {
         CG_TEX.remove();
     }
 
-    // ── Capture layered ResourceLocation passed to entityTranslucent ─────────
+    // Capture layered ResourceLocation passed to entityTranslucent
     // Dual SRG/named pair because class-level remap=false leaves vanilla method descriptors as-written.
 
     @Redirect(method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;ILcom/github/alexthe666/iceandfire/entity/EntityDragonBase;FFFFFF)V",
@@ -87,7 +87,7 @@ public class LayerDragonArmorMixin {
         return RenderType.armorCutoutNoCull(loc);
     }
 
-    // ── Draw IaF's base armor through the UNWRAPPED buffer (cg_capTex made the RT armorCutoutNoCull) ──
+    // Draw IaF's base armor through the UNWRAPPED buffer (cg_capTex made the RT armorCutoutNoCull)
     // Two problems when the dragon itself is glinted: (1) EntityGlintRender wraps the buffer and
     // auto-fans every entity_* RT through the body glint, so IaF's armor draw got the body glint
     // stamped across the whole model (including empty texture space); (2) the armor reuses the
@@ -113,7 +113,7 @@ public class LayerDragonArmorMixin {
         return EntityGlintRender.unwrap(buf).getBuffer(rt);
     }
 
-    // ── Apply glint + outline at RETURN (base already drawn via unwrap + armorCutoutNoCull) ──
+    // Apply glint + outline at RETURN (base already drawn via unwrap + armorCutoutNoCull)
 
     @Inject(method = "render(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;ILcom/github/alexthe666/iceandfire/entity/EntityDragonBase;FFFFFF)V",
             at = @At("RETURN"), require = 0)

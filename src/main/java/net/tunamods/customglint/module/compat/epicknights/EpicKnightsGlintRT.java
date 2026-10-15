@@ -79,7 +79,7 @@ public final class EpicKnightsGlintRT extends RenderStateShard {
     private static final RenderStateShard.WriteMaskStateShard EK_NO_WRITE =
             new RenderStateShard.WriteMaskStateShard(false, false);
 
-    // ── Per-slot infrastructure for FullyBuffered (Oculus-no-pack) path ────────────────────
+    // Per-slot infrastructure for FullyBuffered (Oculus-no-pack) path
     //
     // Under Oculus's FullyBufferedMultiBufferSource, endBatch(rt) defers the actual draw to a
     // later graph-ordered flush. Any manual glStencilOp/glStencilFunc/glColorMask calls between
@@ -371,7 +371,7 @@ public final class EpicKnightsGlintRT extends RenderStateShard {
 
         int slot = CustomGlintRenderer.nextStencilSlot();
 
-        // ── Pass 1: per-slot stencil write ─────────────────────────────────────────────────
+        // Pass 1: per-slot stencil write
         // forDecorationStencilWriteSlot's shard handles enableStencil, pendingFrameStencilClear,
         // and stamps slot V where alpha-pass AND depth-pass. No manual GL here.
         // Union over base + sibling overlay: crowns put their band shape in the overlay and only
@@ -390,7 +390,7 @@ public final class EpicKnightsGlintRT extends RenderStateShard {
             bs.endBatch(writeRT);
         }
 
-        // ── Pass 2: glint where stencil == slot ────────────────────────────────────────────
+        // Pass 2: glint where stencil == slot
         // forDecorationGlintSlot's shard does stencil EQUAL slot + polygon offset. No manual GL.
         CustomGlint.Layer[] layers = glint.layers();
         float[] buf = CustomGlintRenderer.COLOR_BUF.get();
@@ -457,7 +457,7 @@ public final class EpicKnightsGlintRT extends RenderStateShard {
         // (crowns: shape in overlay, base = gems only; surcoats: opposite). Compute once.
         ResourceLocation sibling = siblingTexture(decorationTexture);
 
-        // ── Glint: depth-prewrite self-mask ─────────────────────────────────────────
+        // Glint: depth-prewrite self-mask
         // forDecorationDepthPrewrite uses RENDERTYPE_OUTLINE_SHADER which alpha-discards at 0
         // in fragment code (independent of shader pack settings), writing depth ONLY at opaque
         // texels, no polygon offset, raw projected depth. forDecorationGlintShader then tests

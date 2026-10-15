@@ -22,15 +22,10 @@ import java.util.function.Consumer;
 import static net.tunamods.customglint.CustomGlintMod.MOD_ID;
 
 /**
- * Server-safe data API for Custom Glints. NBT read/write, color and design constants, and the
- * auto-apply registries live here. The rendering pipeline lives in
- * {@link net.tunamods.customglint.common.client.CustomGlintRenderer} (client-only: referenced by
- * fully-qualified name here so this server-safe class carries no client import), which references
- * this class for {@link Layer}/{@link Data} types and NBT.
- *
- * Split was required because the previous unified class extended {@code RenderStateShard} (a
- * client-only base class) and imported {@code Minecraft}/{@code RenderType}/etc., so any
- * server-reachable reference triggered {@code ClassNotFoundException} on dedicated servers.
+ * Server-safe data API for Glint & Glamour: NBT read/write, color and design constants, and the
+ * auto-apply registries. The client-only rendering pipeline is
+ * {@link net.tunamods.customglint.common.client.CustomGlintRenderer}, linked by full name here so this
+ * class carries no client import and stays loadable on a dedicated server.
  *
  * <p>Naming follows what each pair of methods actually does, not one convention throughout:
  * read/write for plain value transfer, get/set for mutable stored state, from/to for NBT
@@ -40,7 +35,7 @@ public final class CustomGlint {
 
     private CustomGlint() {}
 
-    // ── Scroll directions ──────────────────────────────────────────────────────
+    // Scroll directions
 
     /** {@link Layer#scrollDir} values: the direction the animated glint drifts. {@code STATIC} freezes the
      *  animation and uses {@link Layer#scrollOffset} as a manual position instead. The eight compass values
@@ -74,7 +69,7 @@ public final class CustomGlint {
         return Math.round((255f - alpha) * 8f / (255f - GLINT_ALPHA_MIN));
     }
 
-    // ── Layer ─────────────────────────────────────────────────────────────────
+    // Layer
 
     public record Layer(ResourceLocation design, int[] colors, float speed, boolean interpolate,
                         float patternScale, boolean simultaneous, int scrollDir, float scrollOffset, int seed) {
@@ -108,7 +103,7 @@ public final class CustomGlint {
         }
     }
 
-    // ── Data ─────────────────────────────────────────────────────────────────
+    // Data
 
     public record Data(Layer[] layers) {
         // Value equality over the Layer[] (the record default compares the array by identity, which would
@@ -119,7 +114,7 @@ public final class CustomGlint {
         @Override public int hashCode() { return Arrays.hashCode(layers); }
     }
 
-    // ── Colors ────────────────────────────────────────────────────────────────
+    // Colors
 
     /** Parses a {@code "RRGGBB"} / {@code "#RRGGBB"} hex string to an opaque ARGB int. For string color
      *  sources, commands, data packs, the config, where the value isn't a compile-time constant. The
@@ -159,7 +154,7 @@ public final class CustomGlint {
     // That is the point of the swatch, it leaves a deliberate gap in a multi-colour cycle.
     public static final int BLACK      = 0xFF000000;
 
-    // ── Designs ───────────────────────────────────────────────────────────────
+    // Designs
 
     /** {@code customglint:<path>} resource location helper. */
     public static ResourceLocation res(String path) {
@@ -315,7 +310,7 @@ public final class CustomGlint {
             BROWN, WHITE, LIGHT_GRAY, GRAY, BLACK
     };
 
-    // ── NBT ──────────────────────────────────────────────────────────────────
+    // NBT
 
     private static final String TAG              = MOD_ID;
     private static final String LAYERS_KEY       = "layers";
@@ -341,15 +336,15 @@ public final class CustomGlint {
         return readInner(root.getCompound(TAG));
     }
 
-    /** Per-thread cache of parsed glint {@link Data}, keyed on the identity of the {@code customglint}
-     *  sub-tag {@link CompoundTag}. The render loop calls this every frame per item / armor piece; a plain
-     *  {@link #read} re-parses NBT and allocates a fresh {@code Layer[]}/{@code int[]}/{@code Data} each call.
+    /** Per-thread cache of parsed glint {@link Data}, keyed on the {@code customglint} sub-tag. The render loop
+     *  calls this every frame per item / armor piece; a plain {@link #read} re-parses NBT and allocates a fresh
+     *  {@code Layer[]}/{@code int[]}/{@code Data} each call.
      *
-     *  <p>Invalidation is automatic: {@link #write}/{@link #remove} replace the sub-tag with a brand-new
-     *  {@code CompoundTag} instance, so any layer change is a cache miss. Glowing / glowColors edits mutate
-     *  the sub-tag in place, but neither is part of {@code Data} (which carries layers only), so a stale hit
-     *  in that case is still correct. The {@link WeakHashMap} lets entries drop once the owning tag/stack is
-     *  GC'd; the {@link ThreadLocal} avoids locking between the render and integrated-server threads. */
+     *  <p>{@link WeakHashMap} hashes with {@code equals}/{@code hashCode}, and {@link CompoundTag} compares by
+     *  content, so the key is the tag's value, not its instance. Any change to the sub-tag (a layer write, or a
+     *  glow edit in place) changes its hash and misses; two stacks with identical glint NBT share one entry,
+     *  which is correct because they parse to the same Data. Entries drop once the key tag is GC'd; the
+     *  {@link ThreadLocal} avoids locking between the render and integrated-server threads. */
     private static final ThreadLocal<WeakHashMap<CompoundTag, Data>> DATA_CACHE =
             ThreadLocal.withInitial(WeakHashMap::new);
 
@@ -497,8 +492,8 @@ public final class CustomGlint {
         return root.contains(TAG) ? root.getCompound(TAG) : null;
     }
 
-    /** Mutate the {@code customglint} sub-tag in place (creating it if absent) and put it back. Matches the
-     *  existing glow setters; does not disturb any glint Data already stored under the same tag. */
+    /** Mutate the {@code customglint} sub-tag in place (creating it if absent) and put it back. Leaves any
+     *  glint layers already stored under the same tag untouched. */
     private static void mutateGlowSubTag(ItemStack stack, Consumer<CompoundTag> mut) {
         CompoundTag root = stack.getOrCreateTag();
         CompoundTag glintTag = root.contains(TAG) ? root.getCompound(TAG) : new CompoundTag();
@@ -587,7 +582,7 @@ public final class CustomGlint {
         return glinted(item, design, new int[]{color}, 1.0f, true, 1.0f, true);
     }
 
-    // ── Auto-apply registries ─────────────────────────────────────────────────
+    // Auto-apply registries
     //
     // Craft / fishing / mob-drop / loot all map an Item to a single-layer Data and apply it on the
     // matching event. They differ only in which event feeds them, so the storage and apply logic is
@@ -656,7 +651,7 @@ public final class CustomGlint {
         registerLootGlint(lootTable, item, design, colors, 1.0f, true, 1.0f, true);
     }
 
-    // ── Entity glint API ──────────────────────────────────────────────────────
+    // Entity glint API
     //
     // Per-instance: NBT lives in the LivingEntity's persistent data under TAG (same schema as
     // items). Server writes; a client-side sync packet (GlintEntitySyncPacket) pushes the tag to
@@ -782,7 +777,7 @@ public final class CustomGlint {
         stack.getOrCreateTag().put(TAG, glintTag.copy());
     }
 
-    // ── NBT serialization helpers (decoupled from ItemStack) ──────────────────
+    // NBT serialization helpers (decoupled from ItemStack)
 
     /** Decodes the inner glint CompoundTag (the value stored under TAG) into a Data record, or null if invalid/missing. */
     @Nullable

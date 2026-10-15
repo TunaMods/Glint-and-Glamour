@@ -53,8 +53,6 @@ public class HorseArmorLayerMixin {
         applyHorseArmorGlint(poseStack, buffer, packedLight, entity, this.model);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-
     private static void applyHorseArmorGlint(PoseStack poseStack, MultiBufferSource buffer,
             int packedLight, Horse entity, HorseModel<Horse> model) {
         ItemStack stack = entity.getArmor();
@@ -67,15 +65,12 @@ public class HorseArmorLayerMixin {
         if (tex == null) return; // a modded HorseArmorItem could return null; skip rather than NPE the stencil/glow path
 
         if (glint != null) {
-            // ── Stencil mask pass ───────────────────────────────────────────
-            // forHorseArmorGlint draws on every face of the armor model regardless of armor
-            // texture alpha (the glint shader samples a glint design, not the armor texture).
-            // For vanilla iron/gold/diamond barding this is fine: the texture is full-coverage
-            // opaque so visible glint == armor coverage. But Epic Knights barding (chainmail,
-            // mail variants, etc.) has transparent gaps where the horse body shows through, and
-            // the unmasked glint bleeds across those gaps onto the body silhouette. Stencil-mask
-            // bit 0x80 via the armor texture's alpha cutoff, then constrain the glint test to
-            // that bit. Same pattern as IaF mount armor.
+            // Stencil mask pass
+            // HorseArmorLayer draws the whole horse model with the barding texture, so the armor mesh
+            // is also the body, legs and saddle mesh; only the barding texture's alpha says which faces
+            // are armor. A glint RT samples its design, not that texture, so unmasked it would cover the
+            // entire horse. Stencil-mask bit 0x80 through the barding texture's alpha cutoff, then
+            // constrain the glint test to that bit. Same pattern as IaF mount armor.
             RenderType maskType = CustomGlintRenderer.forMountArmorStencilMask(tex);
             model.renderToBuffer(poseStack, buffer.getBuffer(maskType), packedLight, OverlayTexture.NO_OVERLAY, 1.0f, 1.0f, 1.0f, 1.0f);
             if (buffer instanceof MultiBufferSource.BufferSource bs0) bs0.endBatch(maskType);

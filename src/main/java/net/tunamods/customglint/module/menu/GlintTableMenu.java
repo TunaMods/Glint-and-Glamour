@@ -199,7 +199,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
             addSlot(new Slot(inv, col, x + col * 18, y + 58));
     }
 
-    // ── Import lock (NBT flag) ───────────────────────────────────────────────────
+    // Import lock (NBT flag)
     // Forge 1.20.1 has no DataComponent for this: a printed-library trim imported from a config file but not
     // yet crafted carries this NBT flag. It renders dimmed in the right grid and can't be withdrawn until the
     // player prints a matching trim, which clears the flag. Present = locked; absent = a normal owned trim.

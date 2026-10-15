@@ -49,7 +49,7 @@ public class RenderTrollWeaponMixin {
         }
     }
 
-    // ── Apply glint at RETURN. Pose has been popped by IaF, so re-apply the
+    // Apply glint at RETURN. Pose has been popped by IaF, so re-apply the
     //    (0.5, -0.75, 0.5) translate it uses before rendering MODEL.
 
     @Inject(method = "m_108829_", at = @At("RETURN"), require = 0)

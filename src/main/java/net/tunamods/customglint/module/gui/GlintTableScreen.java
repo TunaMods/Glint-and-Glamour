@@ -82,7 +82,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
     private static final int COLOR_STRIP_X = 122, COLOR_CELL = 12, COLOR_ICON = 12;
     private static final int COLOR_STRIP_Y = PREVIEW_Y + PREVIEW_H; // 150
 
-    // ── Active skin palette ───────────────────────────────────────────────────
+    // Active skin palette
     private GlintTableSkin skin = GlintTableSkin.DEFAULT;
     private int DIM_GHOST, DIM_PREVIEW;
     private int RING_MAIN, RING_DONOR;
@@ -123,7 +123,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
     private int draggingGrid = -1;
     private boolean draggingImport = false;
 
-    // ── Import picker overlay ─────────────────────────────────────────────────
+    // Import picker overlay
     // Lists two blueprint sources: this client's PERSONAL trims (config/glint-and-glamour/trims/*.json, cross-world,
     // freely deletable) and, on a dedicated server, the SHARED server blueprints (op-managed). Picking one
     // sends it to the server, which files it into the printed library as a LOCKED (dimmed) build target.
@@ -284,7 +284,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         super.removed();
     }
 
-    // ── In-progress build persistence ──────────────────────────────────────────
+    // In-progress build persistence
     public static void clearSavedBuild() { savedBuild = null; }
 
     private static final class Build {
@@ -374,7 +374,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
             minecraft.gameMode.handleInventoryMouseClick(menu.containerId, slot, 0, ClickType.QUICK_MOVE, minecraft.player);
     }
 
-    // ── Selection ───────────────────────────────────────────────────────────────
+    // Selection
 
     private ItemStack selectionPreview() {
         if (selectedMain == null) return ItemStack.EMPTY;
@@ -860,7 +860,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         }
     }
 
-    // ── Render ──────────────────────────────────────────────────────────────────
+    // Render
 
     @Override
     protected void renderBg(GuiGraphics g, float partialTick, int mx, int my) {
@@ -1336,7 +1336,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         if (!donorOwned()) overlay(g, x, y, x + 16, y + 16, DIM_PREVIEW);
     }
 
-    // ── Layer strip ──────────────────────────────────────────────────────────────
+    // Layer strip
 
     private record Chip(int x, int kind, int index) {}
 
@@ -1417,7 +1417,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         }
     }
 
-    // ── Color-shard strip ────────────────────────────────────────────────────────
+    // Color-shard strip
 
     private void drawColorStrip(GuiGraphics g, int mx, int my) {
         List<List<Integer>> shards = editShards();
@@ -1856,7 +1856,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
                 .withStyle(have >= need ? ChatFormatting.GREEN : ChatFormatting.RED));
     }
 
-    // ── Import picker ─────────────────────────────────────────────────────────────
+    // Import picker
 
     /** True when a printed-library entry is an imported trim the player hasn't crafted yet (dimmed, locked). */
     private static boolean isImportLocked(ItemStack s) {
@@ -2159,7 +2159,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         g.fill(x, y + 3, x + 5, y + 7, color);
     }
 
-    // ── Beveled widgets ───────────────────────────────────────────────────────────
+    // Beveled widgets
 
     private final class BevelButton extends AbstractWidget {
         private final Supplier<String> label;
@@ -2509,7 +2509,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         pose.popPose();
     }
 
-    // ── Input ─────────────────────────────────────────────────────────────────
+    // Input
 
     private static boolean isTrim(ItemStack stack) {
         return stack.getItem() instanceof GlintTrimItem || stack.getItem() instanceof GlowTrimItem;
@@ -2750,8 +2750,8 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
             return;
         }
         // Commit the previewed merge donor into real stacked layers (one per layer, one tear each) so the
-        // printed trim matches the stacked preview. Only fires when owned + enough tears (canAddLayer);
-        // otherwise the donor stays a colour-merge fallback.
+        // printed trim matches the stacked preview. canAddLayer only checks the layer cap; ownership and layer
+        // tears are validated by the server at print.
         if (canAddLayer()) addLayer();
         src = activeTrim();
         if (src.isEmpty() || !(src.getItem() instanceof GlintTrimItem)) return;

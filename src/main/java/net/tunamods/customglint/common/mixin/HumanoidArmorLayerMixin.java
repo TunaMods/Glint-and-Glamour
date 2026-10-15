@@ -52,8 +52,6 @@ public class HumanoidArmorLayerMixin {
                 pPoseStack, pBuffer, pLivingEntity, pSlot, pPackedLight, pModel);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-
     private static void applyArmorGlint(HumanoidArmorLayer<?, ?, ?> layer,
             PoseStack poseStack, MultiBufferSource buffer,
             LivingEntity entity, EquipmentSlot slot, int packedLight, HumanoidModel model) {

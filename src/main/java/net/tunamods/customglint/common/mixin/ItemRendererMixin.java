@@ -41,7 +41,7 @@ public class ItemRendererMixin {
      *  pack (see applyGlint). */
     private static final ThreadLocal<Boolean> CG_FLAT_ITEM = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
-    // ── Stack capture (HEAD) ──────────────────────────────────────────────────
+    // Stack capture (HEAD)
 
     /** SRG target: captures the stack before render begins (obfuscated environments). */
     @Inject(method = "m_115143_", at = @At("HEAD"), require = 0)
@@ -77,7 +77,7 @@ public class ItemRendererMixin {
         }
     }
 
-    // ── Stack clear (RETURN) ─────────────────────────────────────────────────
+    // Stack clear (RETURN)
 
     /** SRG target: captures the glow-outline silhouette, then clears the captured stack. */
     @Inject(method = "m_115143_", at = @At("RETURN"), require = 0)
@@ -104,7 +104,7 @@ public class ItemRendererMixin {
         CG_FLAT_ITEM.remove();
     }
 
-    // ── Glow-outline capture ─────────────────────────────────────────────────
+    // Glow-outline capture
     // For a glowing item, snapshot its silhouette (baked quads + camera-relative pose + captured modelview
     // + light + animated glow colour) so GlowOutlineRenderer can replay it into the mask and ring it.
     // World items (third-person held, dropped, item frames, other players) drain at AFTER_WEATHER; the
@@ -168,7 +168,7 @@ public class ItemRendererMixin {
         else GlowOutlineRenderer.queueWorldItem(quads, tp.last(), modelView, light, color);
     }
 
-    // ── Shader-pack glint draw (item path) ───────────────────────────────────
+    // Shader-pack glint draw (item path)
     // Under an active shaderpack a flat item's glint is NEVER combined with the base in-phase (see applyGlint:
     // the base draws alone so Embeddium's bulk encoder can't drop it when a chromatic draw flips it on for the
     // frame; the "everything glinted fills solid" bug, hotbar included). The glint is drawn HERE instead, into
@@ -317,7 +317,7 @@ public class ItemRendererMixin {
         return out;
     }
 
-    // ── getFoilBuffer intercepts ─────────────────────────────────────────────
+    // getFoilBuffer intercepts
     // getFoilBuffer = batched rendering (world items, item frames). @Inject stacks; isCancelled() yields.
 
     /** SRG target: intercepts getFoilBuffer in obfuscated environments. */
@@ -341,7 +341,7 @@ public class ItemRendererMixin {
         if (consumer != null) cir.setReturnValue(consumer);
     }
 
-    // ── getFoilBufferDirect intercepts ───────────────────────────────────────
+    // getFoilBufferDirect intercepts
     // getFoilBufferDirect = direct/GUI (immediate-mode) rendering.
 
     /** SRG target: intercepts getFoilBufferDirect in obfuscated environments. */
@@ -364,8 +364,6 @@ public class ItemRendererMixin {
         VertexConsumer consumer = applyGlint(buffer, renderType, noEntity);
         if (consumer != null) cir.setReturnValue(consumer);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     /** Returns a VertexMultiConsumer combining all glint layers + base renderType, or null if no glint. */
     private static VertexConsumer applyGlint(MultiBufferSource buffer, RenderType renderType, boolean isItem) {

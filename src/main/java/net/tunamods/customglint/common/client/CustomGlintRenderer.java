@@ -63,7 +63,7 @@ import net.tunamods.customglint.common.CustomGlint.Layer;
  */
 public final class CustomGlintRenderer extends RenderStateShard {
 
-    // ── Texture cache ─────────────────────────────────────────────────────────
+    // Texture cache
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<ResourceLocation, ResourceLocation> textureCache = new HashMap<>();
@@ -173,7 +173,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
     }
 
-    // ── Pre-tinted design textures (shader-pack only) ─────────────────────────
+    // Pre-tinted design textures (shader-pack only)
     //
     // A texture glint is the greyscale design in Sampler0 times the layer's animated colour in ColorModulator,
     // and off-pack our own copy of vanilla's program multiplies the two (glint.fsh). Under a pack it doesn't:
@@ -199,7 +199,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
      *  under-pack brightness scalar {@link #envelopeDim} derived from its own coverage. */
     private record Gray(int[] px, int w, int h, float dim) {}
 
-    // ── Vanilla's glint envelope ─────────────────────────────────────────────
+    // Vanilla's glint envelope
     //
     // Mean luminance of vanilla's enchanted_glint_item.png, measured off the 1.20.1 asset. Its peak is 0.66,
     // so it never goes near white. Packs that treat glint as emissive and amplify it are calibrated against
@@ -226,7 +226,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         return Math.min(1.0f, VANILLA_GLINT_MEAN / mean);
     }
 
-    // ── Photon compat ────────────────────────────────────────────────────────
+    // Photon compat
     //
     // Photon is the one pack that consumes the glint texture through a raw power law, in
     // program/gbuffers_armor_glint.fsh:
@@ -406,7 +406,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         return t.loc;
     }
 
-    // ── Render types ──────────────────────────────────────────────────────────
+    // Render types
 
     /** Assigned by RenderBuffersMixin on RenderBuffers construction; null until then. */
     public static SortedMap<RenderType, BufferBuilder> fixedBufferRegistry;
@@ -450,7 +450,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         };
     }
 
-    // ── Fixed-buffer registration + builder recycling ───────────────────────────
+    // Fixed-buffer registration + builder recycling
     // Each custom glint RenderType needs a dedicated BufferBuilder in the fixed-buffer map. In 1.20.1 a
     // BufferBuilder's backing buffer is a raw MemoryUtil.memAlloc (no Cleaner, no close()), so simply dropping
     // a builder when its RT is removed (chromatic LRU eviction, resource reload, EpicKnightsGlintRT) orphans
@@ -502,7 +502,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     private record GlintRT(RenderType rt, float[] holder) {}
     private static final Map<Layer, GlintRT[]> GLINT_FAST = new WeakHashMap<>();
 
-    // ── Scroll direction → UV drift ─────────────────────────────────────────────
+    // Scroll direction → UV drift
     // The glint motif drifts along one of eight compass directions (or freezes when STATIC). The pattern
     // *appears* to move opposite to the UV drift, so these are negated from screen direction; texture-V runs
     // DOWN so North (pattern up) drifts +V. This directional drift REPLACES the vanilla 3-rotation scroll for
@@ -574,7 +574,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         RenderSystem.setTextureMatrix(m);
     }
 
-    // ── Glint core shader ───────────────────────────────────────────────────────
+    // Glint core shader
     // The texture glints draw through OUR OWN copy of vanilla's rendertype_glint program instead of binding
     // vanilla's. The GLSL is identical (assets/customglint/shaders/core/glint.{vsh,fsh} are verbatim copies);
     // only the JSON's declared blend differs, and that difference is the entire reason this exists. See the
@@ -612,7 +612,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         return glintShader;
     }
 
-    // ── Procedural chromatic glint ──────────────────────────────────────────────
+    // Procedural chromatic glint
     // The chromatic design has no PNG, so a custom core shader (registered via RegisterShadersEvent) synthesises
     // an oil-slick from value-noise. That shader no longer draws the glint: ChromaticTextureBaker runs it once per
     // frame into an offscreen texture, and the glint RTs below sample that texture through the ordinary
@@ -1508,7 +1508,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     private static final RenderStateShard.WriteMaskStateShard NO_WRITE =
             new RenderStateShard.WriteMaskStateShard(false, false);
 
-    // ── Per-glint stencil-slot pool ────────────────────────────────────────────
+    // Per-glint stencil-slot pool
     // Allocates a unique stencil value (1..255) per glint-mask call so overlapping decoration
     // glints (multiple Epic Knights decorations on one figure) don't share a stencil silhouette.
     private static int stencilSlotCounter = 0;
@@ -1538,7 +1538,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
 
     private CustomGlintRenderer() { super("", () -> {}, () -> {}); }
 
-    // ── Shader-mod detection ──────────────────────────────────────────────────
+    // Shader-mod detection
     // Reflective so we don't need a compileOnly dep on the shader mod. Common shader
     // mods expose the same public detection surface, resolved once and cached as a
     // reflect.Method (see SHADER_GET_INSTANCE / SHADER_IS_IN_USE) and reused per call.
