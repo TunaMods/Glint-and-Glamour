@@ -315,8 +315,14 @@ public class GlintCommand {
             for (int color : layer.colors()) GlintTrimItem.addColor(trim, color);
             trim.getOrCreateTag().putFloat(GlintTrimItem.SPEED_TAG, layer.speed());
             trim.getOrCreateTag().putFloat(GlintTrimItem.SCALE_TAG, layer.patternScale());
+            trim.getOrCreateTag().putInt(GlintTrimItem.SCROLL_TAG, layer.scrollDir());
+            trim.getOrCreateTag().putFloat(GlintTrimItem.OFFSET_TAG, layer.scrollOffset());
             GlintTrimItem.setPattern(trim, layer.design());
             GlintTrimItem.setGlowing(trim, CustomGlint.isGlowing(held));
+            // setPattern/setGlowing re-emit the preview as a sequential layer; write the real one last so the
+            // simultaneous flag and seed survive (same fix as GiveGlintTrimPacket).
+            CustomGlint.write(trim, layers);
+            GlintTrimItem.setSeed(trim, layer.seed());
         } else {
             // Multi-layer: set flat tags from layer 0 for display, then copy the full glint tag verbatim
             CustomGlint.Layer layer0 = layers[0];
