@@ -20,6 +20,8 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.entity.living.LivingDropsEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -57,6 +59,7 @@ import net.tunamods.customglint.module.menu.ModMenuTypes;
 import net.tunamods.customglint.module.network.GlintDesignSyncPacket;
 import net.tunamods.customglint.module.network.ModNetworking;
 import net.tunamods.customglint.module.recipe.ModRecipes;
+import net.tunamods.customglint.module.rule.GlintRules;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,7 +69,8 @@ import java.util.Map;
  * Full standalone mod entry. Registry content (items, creative tab, recipes, loot modifiers, blocks, block
  * entities, menus) lives in the {@code Mod*} holder classes under the matching module packages; see
  * {@link ModItems}, {@link ModCreativeTabs}, {@link ModRecipes}, {@link ModLootModifiers}, etc. This class
- * only wires their {@code register(bus)} hooks and owns the data-pack design reload/sync.
+ * only wires their {@code register(bus)} hooks and owns the data-pack design reload/sync and the glint rule
+ * events (load on server start, sync on join, drop rules).
  */
 @Mod(CustomGlintMod.MOD_ID)
 public class CustomGlintMod {
@@ -116,6 +120,20 @@ public class CustomGlintMod {
         MinecraftForge.EVENT_BUS.addListener(this::onPlayerJoin);
         MinecraftForge.EVENT_BUS.addListener(this::onItemCrafted);
         MinecraftForge.EVENT_BUS.addListener(this::onItemPickup);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStarting);
+        MinecraftForge.EVENT_BUS.addListener(this::onLivingDrops);
+    }
+
+    /** Load the glint rules file ({@code /glint rule}) before anyone joins or any loot rolls. */
+    private void onServerStarting(ServerStartingEvent event) {
+        int n = GlintRules.load();
+        if (n > 0) LOGGER.info("Loaded {} glint rule(s) from {}", n, GlintRules.file());
+    }
+
+    /** DROP rules ({@code /glint rule drop}): glint the matching items a mob type drops. Runs after the mob's
+     *  loot table, so a LOOT rule on that table has already had its turn and is not overwritten. */
+    private void onLivingDrops(LivingDropsEvent event) {
+        GlintRules.applyDrops(event.getEntity().getType(), event.getDrops());
     }
 
     /** Route Glint loot items straight into a Glint Bag the player is carrying, so a looting run doesn't fill
@@ -214,9 +232,11 @@ public class CustomGlintMod {
     }
 
     private void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (!dataPackDesigns.isEmpty() && event.getEntity() instanceof ServerPlayer player) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!dataPackDesigns.isEmpty()) {
             ModNetworking.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
                 new GlintDesignSyncPacket(new ArrayList<>(dataPackDesigns)));
         }
+        GlintRules.syncTo(player); // item rules render client-side, so every client needs the current set
     }
 }

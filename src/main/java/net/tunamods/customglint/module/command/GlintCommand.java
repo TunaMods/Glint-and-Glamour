@@ -47,8 +47,8 @@ import java.util.function.Predicate;
 /**
  * The {@code /glint} command. Held-item subcommands act on the sender's main hand; the {@code entity}
  * subcommand acts on selector-matched living entities and broadcasts every change through
- * {@link EntityGlintEvents} so trackers see it. Everything here runs on the server, so no client-only
- * class may be referenced from this file.
+ * {@link EntityGlintEvents} so trackers see it; {@code rule} lives in {@link GlintRuleCommand}. Everything
+ * here runs on the server, so no client-only class may be referenced from this file.
  */
 public class GlintCommand {
 
@@ -156,6 +156,7 @@ public class GlintCommand {
                 .then(Commands.argument("name", StringArgumentType.word())
                     .executes(ctx -> export(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
+            .then(GlintRuleCommand.node())
             .then(Commands.literal("entity")
                 .then(Commands.argument("targets", EntityArgument.entities())
                     .then(Commands.literal("apply")

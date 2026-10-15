@@ -14,7 +14,9 @@ import java.util.Optional;
  */
 public class ModNetworking {
 
-    private static final String PROTOCOL = "1";
+    // Bumped whenever a packet is added or its format changes, so a mismatched client is refused at login with a
+    // clear message instead of failing on the first unknown packet.
+    private static final String PROTOCOL = "2";
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             CustomGlint.res("main"),
@@ -61,5 +63,9 @@ public class ModNetworking {
         CHANNEL.registerMessage(16, GlintWandDeleteBlueprintPacket.class, GlintWandDeleteBlueprintPacket::encode, GlintWandDeleteBlueprintPacket::decode, GlintWandDeleteBlueprintPacket::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
         // 17: GlintWandRequestBlueprintsPacket C→S  wand Import open: request the current shared blueprint pool
         CHANNEL.registerMessage(17, GlintWandRequestBlueprintsPacket.class, GlintWandRequestBlueprintsPacket::encode, GlintWandRequestBlueprintsPacket::decode, GlintWandRequestBlueprintsPacket::handle, Optional.of(NetworkDirection.PLAY_TO_SERVER));
+
+        // Glint rules (/glint rule).
+        // 18: GlintRulesSyncPacket S→C  the server's item rules, on join and after every rule change or reload
+        CHANNEL.registerMessage(18, GlintRulesSyncPacket.class, GlintRulesSyncPacket::encode, GlintRulesSyncPacket::decode, GlintRulesSyncPacket::handle, Optional.of(NetworkDirection.PLAY_TO_CLIENT));
     }
 }

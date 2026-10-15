@@ -11,6 +11,9 @@ import net.tunamods.customglint.module.menu.ModMenuTypes;
 import net.tunamods.customglint.module.network.GlintPrintedSyncPacket;
 import net.tunamods.customglint.module.network.GlintServerBlueprintsSyncPacket;
 import net.tunamods.customglint.module.network.GlintStoredSyncPacket;
+import net.tunamods.customglint.common.CustomGlint;
+
+import java.util.Map;
 
 /** Client-only wiring for the Glint Table and Glint Bag: binds each menu type to its screen, registers the
  *  table's skin-swapping block model, and drops the sync mirrors on disconnect so a later session can't read
@@ -25,6 +28,7 @@ public final class GlintTableClientInit {
             GlintStoredSyncPacket.clearClient();
             GlintPrintedSyncPacket.clearClient();
             GlintServerBlueprintsSyncPacket.clearClient();
+            CustomGlint.setRuleItemGlints(Map.of()); // the next server sends its own item rules on join
             GlintTableScreen.clearSavedBuild();
             GlintTableModelClient.clearTracked();
         });
