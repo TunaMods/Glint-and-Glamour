@@ -1,3 +1,8 @@
+[1.8.0]
+
+Fixed:
+- A mod that bundles only the Glint & Glamour API no longer crashes the client on the first resource reload. The API jar now ships the shaders its renderer loads
+
 [1.7.0]
 
 Renamed the mod to Glint & Glamour (formerly Custom Glints). Nothing in your worlds changes: same items, same saves.

@@ -188,6 +188,10 @@ def apiJarTask = tasks.register('apiJar', Jar) {
         include 'META-INF/accesstransformer.cfg'
         include 'custom_glint.mixins.json'
         include 'assets/customglint/textures/glint/**'
+        // The pipelines in common/client are the only thing that loads these, so they ship with the
+        // api half. Without them a client that has the api on its path dies in the first resource
+        // reload on customglint:pipeline/glow_outline_id.
+        include 'assets/customglint/shaders/**'
         // Client rendering config labels live here — ship them so embedders' config screen isn't raw keys.
         include 'assets/customglint/lang/**'
         include 'customglint.png'
@@ -246,6 +250,7 @@ tasks.named('jar', Jar).configure {
     exclude 'META-INF/accesstransformer.cfg'
     exclude 'custom_glint.mixins.json'
     exclude 'assets/customglint/textures/glint/**'
+    exclude 'assets/customglint/shaders/**'
     // The dev neoforge.mods.toml declares both mods + all mixins; the full jar uses its own.
     exclude 'META-INF/neoforge.mods.toml'
     exclude 'META-INF/neoforge.api.mods.toml'
