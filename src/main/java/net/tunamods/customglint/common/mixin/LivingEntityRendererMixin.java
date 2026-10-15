@@ -29,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(LivingEntityRenderer.class)
 public class LivingEntityRendererMixin {
 
-    // ── HEAD: wrap buffer source so every entity_* RT picks up the glint fan-out ──────
+    // HEAD: wrap buffer source so every entity_* RT picks up the glint fan-out
 
     @ModifyVariable(method = "m_7392_", at = @At("HEAD"), argsOnly = true, require = 0)
     private MultiBufferSource cg_wrapBuf_srg(MultiBufferSource original,
@@ -48,7 +48,7 @@ public class LivingEntityRendererMixin {
         return EntityGlintRender.wrapForEntity(entity, original);
     }
 
-    // ── Body draw: tee the single walk into the glow silhouette (no second model render) ──────
+    // Body draw: tee the single walk into the glow silhouette (no second model render)
 
     // remap=false on BOTH variants so the SRG-named one stays literal (matches the SRG runtime in
     // production) and the named one stays literal (matches the deobf dev runtime). Exactly one resolves per

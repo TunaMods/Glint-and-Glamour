@@ -40,7 +40,7 @@ class GlintTableSkin extends SkinBase {
         g.fill(x + s - 1, y, x + s, y + s, guiLight);
     }
 
-    // ── Skins ─────────────────────────────────────────────────────────────────
+    // Skins
 
     static final GlintTableSkin DEFAULT = new GlintTableSkin("Default");
     static final GlintTableSkin DARK = new GlintTableSkin("Dark");

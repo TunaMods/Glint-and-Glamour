@@ -10,6 +10,7 @@ import net.tunamods.customglint.common.mixin.TextureStateShardAccessor;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -71,7 +72,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     private GlowOutlineRenderer() { super("", () -> {}, () -> {}); }
 
-    // ── Outline categories + per-object id keys ────────────────────────────────
+    // Outline categories + per-object id keys
     // key = (category << 5) | id : top 2 bits = category, low 5 = a running 1..31 id. Stamped into the
     // silhouette vertex-colour alpha so the composite keeps each object's ring separate and picks a
     // per-category thickness (see glow_composite.fsh THICKNESS[]).
@@ -86,7 +87,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     public static int nextGlowKey(int category) { return (category << 5) | nextGlowId(); }
 
-    // ── Per-identity outline id ──────────────────────────────────────────────────
+    // Per-identity outline id
     // One id per logical figure (an entity instance), SHARED by its body and all its surface layers / worn
     // armor so they compose as ONE ring. The composite compares only the low-5-bit id (key & 31) for "same
     // object → no internal seam" and reads the per-category thickness from the high bits, so body
@@ -99,7 +100,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         return (category << 5) | id;
     }
 
-    // ── Shaders ────────────────────────────────────────────────────────────────
+    // Shaders
 
     private static ShaderInstance silhouetteShader;
     private static ShaderInstance compositeShader;
@@ -140,7 +141,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         }
     }
 
-    // ── Offscreen mask target ──────────────────────────────────────────────────
+    // Offscreen mask target
 
     private static TextureTarget maskTarget;
 
@@ -182,7 +183,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         rtTextureCache.clear();
     }
 
-    // ── Silhouette RenderType ──────────────────────────────────────────────────
+    // Silhouette RenderType
     // NEW_ENTITY so putBulkData writes naturally; the silhouette shader reads only Position/Color/UV0.
     // NO_CULL solid union, LEQUAL depth (front-most fragment wins), no blend; occlusion is done in-shader
     // against the scene depth (Sampler1, bound by the drain just before the flush). The shader
@@ -244,7 +245,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                 t -> buildSilhouetteRT("customglint:glow_silhouette_tri_" + t, t, VertexFormat.Mode.TRIANGLES));
     }
 
-    // ── RenderType → texture resolution (for special-item silhouettes) ──────────
+    // RenderType → texture resolution (for special-item silhouettes)
     // A BEWLR (trident, shield, modded custom renderers) draws its model through RenderTypes bound to the
     // item's OWN texture, whose alpha is the real shape. Read that texture off the composite state via the
     // accessor mixins; WHITE_TEXTURE (full fill) for non-composite / textureless RTs. Cached per RenderType.
@@ -278,7 +279,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     private static final BufferBuilder MASK_BUILDER = new BufferBuilder(4096);
     private static final MultiBufferSource.BufferSource MASK_BUFFERS = MultiBufferSource.immediate(MASK_BUILDER);
 
-    // ── Composite scissor / distance thinning ──────────────────────────────────
+    // Composite scissor / distance thinning
     // Slack px added beyond the ring reach when padding a projected box, so rounding the float bounds to
     // whole pixels can never clip the outermost ring texel.
     private static final int SCISSOR_MARGIN = 3;
@@ -335,7 +336,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         return Math.max(MIN_SCALE, Math.min(1.0f, REF_DIST / Math.max(dist, 0.001f)));
     }
 
-    // ── Capture queue ──────────────────────────────────────────────────────────
+    // Capture queue
 
     // {@code anchor} = the GUI-space slot centre + size (the {@code cg_guiAnchor} tuple); null for
     // world / first-person jobs (they scissor by silhouette bounds, not a slot).
@@ -390,7 +391,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         guiJobs.add(new ItemJob(quads, pose, null, light, color, CAT_ITEM, anchor, captureScissor()));
     }
 
-    // ── First-person hand pass flag ──────────────────────────────────────────────
+    // First-person hand pass flag
     // Set across GameRenderer.renderItemInHand (the vanilla first-person hand pass, which nothing cancels).
     // Any item captured while this is true belongs to the FP held queue REGARDLESS of its display context:
     // FP-replacing mods (Punchy, First-Person Model) render the held item with a THIRD_PERSON_*_HAND display
@@ -492,7 +493,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         heldFpProjValid = false;
     }
 
-    // ── Drain ──────────────────────────────────────────────────────────────────
+    // Drain
 
     /** Drain world-space item outlines at {@code RenderLevelStageEvent.AFTER_WEATHER}, where the live
      *  projection is the world one the items were drawn with. Used off-pack only; under a shader pack the
@@ -525,7 +526,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         heldFpProjValid = false;
     }
 
-    // ── Shader-pack (Oculus/Iris) deferred world drain ─────────────────────────
+    // Shader-pack (Oculus/Iris) deferred world drain
     // Snapshot of the live world projection taken at AFTER_WEATHER (which fires every frame BEFORE Iris's
     // end-of-renderLevel composite). Under a pack the world drain runs at renderLevel RETURN, past which the
     // live projection has moved to GUI ortho, so the deferred drain replays this snapshot instead.
@@ -649,11 +650,17 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     // it must hand back exactly what it found. Forcing world defaults inside the GUI phase left
     // EnhancedVisuals' fullscreen overlay pass drawing UNBLENDED, which painted the whole screen black.
     private static boolean savedBlend, savedDepthTest;
+    // BlendMode.lastApplied is not GL state, but later code depends on it. Both glow shaders declare no blend,
+    // so they parse as OPAQUE and leave lastApplied opaque, which makes the next blended shader re-set its own
+    // blend function over whatever its caller set. Citadel's post-effect blit (Alex's Caves) relies on that not
+    // happening; see GLINT_SHADER_SHARD in CustomGlintRenderer for the black-screen case.
+    private static BlendMode savedBlendMode;
 
     /** Snapshot the ambient blend / depth-test enable flags before the drain mutates GL state. */
     private static void snapshotAmbientState() {
         savedBlend = GL11.glIsEnabled(GL11.GL_BLEND);
         savedDepthTest = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        savedBlendMode = BlendMode.lastApplied;
     }
 
     /** Guarantee the MAIN render target is the bound draw target and hand back the GL state the surrounding
@@ -679,6 +686,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
         RenderSystem.disableScissor();
+        BlendMode.lastApplied = savedBlendMode;
     }
 
     /** Shared drain: accumulate the queued silhouettes into the mask under their captured modelview + the
@@ -1042,7 +1050,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                 Math.max(a.prio, b.prio), Math.max(a.snap, b.snap));
     }
 
-    // ── Silhouette vertex consumer ─────────────────────────────────────────────
+    // Silhouette vertex consumer
     // Wraps the mask buffer and forces every vertex colour to (glow rgb, key) so the silhouette shader
     // receives the glow colour in rgb and the per-object key (1..127) in alpha. Position / uv / overlay /
     // light / normal pass through unchanged (the shader uses only Position, UV0 and the forced Color).
@@ -1086,7 +1094,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         @Override public void unsetDefaultColor() { delegate.unsetDefaultColor(); }
     }
 
-    // ── Special-item capture ───────────────────────────────────────────────────
+    // Special-item capture
     // A record-only MultiBufferSource handed to the re-rendered BEWLR (trident/shield/modded). Each
     // emitted vertex's already-transformed (camera-relative) [x,y,z,u,v] is recorded into a bucket keyed by
     // the texture of the RenderType it drew through, so the silhouette alpha-discards against that texture

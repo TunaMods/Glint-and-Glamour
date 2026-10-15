@@ -1,6 +1,7 @@
 package net.tunamods.customglint.common.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.shaders.BlendMode;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -63,7 +64,7 @@ import net.tunamods.customglint.common.CustomGlint.Layer;
  */
 public final class CustomGlintRenderer extends RenderStateShard {
 
-    // ── Texture cache ─────────────────────────────────────────────────────────
+    // Texture cache
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Map<ResourceLocation, ResourceLocation> textureCache = new HashMap<>();
@@ -173,7 +174,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
     }
 
-    // ── Pre-tinted design textures (shader-pack only) ─────────────────────────
+    // Pre-tinted design textures (shader-pack only)
     //
     // A texture glint is the greyscale design in Sampler0 times the layer's animated colour in ColorModulator,
     // and off-pack our own copy of vanilla's program multiplies the two (glint.fsh). Under a pack it doesn't:
@@ -199,7 +200,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
      *  under-pack brightness scalar {@link #envelopeDim} derived from its own coverage. */
     private record Gray(int[] px, int w, int h, float dim) {}
 
-    // ── Vanilla's glint envelope ─────────────────────────────────────────────
+    // Vanilla's glint envelope
     //
     // Mean luminance of vanilla's enchanted_glint_item.png, measured off the 1.20.1 asset. Its peak is 0.66,
     // so it never goes near white. Packs that treat glint as emissive and amplify it are calibrated against
@@ -226,7 +227,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         return Math.min(1.0f, VANILLA_GLINT_MEAN / mean);
     }
 
-    // ── Photon compat ────────────────────────────────────────────────────────
+    // Photon compat
     //
     // Photon is the one pack that consumes the glint texture through a raw power law, in
     // program/gbuffers_armor_glint.fsh:
@@ -406,7 +407,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         return t.loc;
     }
 
-    // ── Render types ──────────────────────────────────────────────────────────
+    // Render types
 
     /** Assigned by RenderBuffersMixin on RenderBuffers construction; null until then. */
     public static SortedMap<RenderType, BufferBuilder> fixedBufferRegistry;
@@ -450,7 +451,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         };
     }
 
-    // ── Fixed-buffer registration + builder recycling ───────────────────────────
+    // Fixed-buffer registration + builder recycling
     // Each custom glint RenderType needs a dedicated BufferBuilder in the fixed-buffer map. In 1.20.1 a
     // BufferBuilder's backing buffer is a raw MemoryUtil.memAlloc (no Cleaner, no close()), so simply dropping
     // a builder when its RT is removed (chromatic LRU eviction, resource reload, EpicKnightsGlintRT) orphans
@@ -502,7 +503,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     private record GlintRT(RenderType rt, float[] holder) {}
     private static final Map<Layer, GlintRT[]> GLINT_FAST = new WeakHashMap<>();
 
-    // ── Scroll direction → UV drift ─────────────────────────────────────────────
+    // Scroll direction → UV drift
     // The glint motif drifts along one of eight compass directions (or freezes when STATIC). The pattern
     // *appears* to move opposite to the UV drift, so these are negated from screen direction; texture-V runs
     // DOWN so North (pattern up) drifts +V. This directional drift REPLACES the vanilla 3-rotation scroll for
@@ -574,7 +575,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         RenderSystem.setTextureMatrix(m);
     }
 
-    // ── Glint core shader ───────────────────────────────────────────────────────
+    // Glint core shader
     // The texture glints draw through OUR OWN copy of vanilla's rendertype_glint program instead of binding
     // vanilla's. The GLSL is identical (assets/customglint/shaders/core/glint.{vsh,fsh} are verbatim copies);
     // only the JSON's declared blend differs, and that difference is the entire reason this exists. See the
@@ -582,9 +583,28 @@ public final class CustomGlintRenderer extends RenderStateShard {
     private static ShaderInstance glintShader;
 
     /** Shader shard for every texture-glint RenderType (items, armor, entities, horse/mount armor, and the
-     *  compat builders). Resolved per draw by {@link #resolveGlintShader()}. */
+     *  compat builders). Resolved per draw by {@link #resolveGlintShader()}.
+     *
+     *  <p>It also hands {@code BlendMode.lastApplied} back as it found it. Our program's blend is one nobody else
+     *  declares, and our fixed buffers flush near the end of the world pass, so without this it is still the
+     *  "last applied" mode when later code applies a shader. Citadel's post-effect blit (Alex's Caves Raycat
+     *  glow, among others) sets an additive blend and then applies vanilla's blit_screen; apply() only skips
+     *  re-setting blit_screen's srcalpha/1-srcalpha blend when lastApplied already equals it, which is the
+     *  normal state of a vanilla frame. With ours in there, the additive blend was replaced by an alpha blend
+     *  and the effect target's opaque black covered the screen. Third person only, because a first-person
+     *  held item draws after the world pass. */
     public static final RenderStateShard.ShaderStateShard GLINT_SHADER_SHARD =
-            new RenderStateShard.ShaderStateShard(CustomGlintRenderer::resolveGlintShader);
+            new RenderStateShard.ShaderStateShard(CustomGlintRenderer::resolveGlintShader) {
+                private BlendMode before; // render thread only, and glint draws never nest
+                @Override public void setupRenderState() {
+                    before = BlendMode.lastApplied;
+                    super.setupRenderState();
+                }
+                @Override public void clearRenderState() {
+                    super.clearRenderState();
+                    BlendMode.lastApplied = before;
+                }
+            };
 
     /**
      * LOAD-BEARING: which glint program to bind, decided per draw against Iris's own gate.
@@ -612,7 +632,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
         return glintShader;
     }
 
-    // ── Procedural chromatic glint ──────────────────────────────────────────────
+    // Procedural chromatic glint
     // The chromatic design has no PNG, so a custom core shader (registered via RegisterShadersEvent) synthesises
     // an oil-slick from value-noise. That shader no longer draws the glint: ChromaticTextureBaker runs it once per
     // frame into an offscreen texture, and the glint RTs below sample that texture through the ordinary
@@ -1050,7 +1070,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     public static RenderType forArmorGlint(Data glint, int layerIdx, float[] frameColor, int colorIdx) {
         Layer layer = glint.layers()[layerIdx];
         if (getTexture(layer.design()) == null) return null;
-        String key = "armor|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
+        String key = "armor|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_ARMOR_GLINT.computeIfAbsent(key, k -> {
@@ -1140,7 +1160,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
                                                  VertexFormat.Mode mode, boolean lateForShaders) {
         Layer layer = glint.layers()[layerIdx];
         if (getTexture(layer.design()) == null) return null;
-        String key = "horse|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset() + "|" + mode + "|" + (lateForShaders ? "late" : "");
+        String key = "horse|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset() + "|" + mode + "|" + (lateForShaders ? "late" : "");
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_HORSE_ARMOR_GLINT.computeIfAbsent(key, k -> {
@@ -1286,7 +1306,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     public static RenderType forMountArmorGlint(Data glint, int layerIdx, float[] frameColor, int colorIdx) {
         Layer layer = glint.layers()[layerIdx];
         if (getTexture(layer.design()) == null) return null;
-        String key = "mount|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
+        String key = "mount|" + layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.patternScale() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_MOUNT_ARMOR_GLINT.computeIfAbsent(key, k -> {
@@ -1358,7 +1378,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
             }
         }
         if (getTexture(layer.design()) == null) return null;
-        String key = layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.interpolate() + "|" + isItem + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
+        String key = layer.design() + "|" + Arrays.toString(layer.colors()) + "|" + layer.speed() + "|" + layer.interpolate() + "|" + layer.simultaneous() + "|" + isItem + "|" + layer.patternScale() + "|" + colorIdx + "|" + layerIdx + "|" + layer.scrollDir() + "|" + layer.scrollOffset();
         float[] holder = GLINT_COLORS.computeIfAbsent(key, k -> new float[4]);
         System.arraycopy(frameColor, 0, holder, 0, 4);
         RenderType cached = BY_GLINT.computeIfAbsent(key, k -> {
@@ -1508,7 +1528,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
     private static final RenderStateShard.WriteMaskStateShard NO_WRITE =
             new RenderStateShard.WriteMaskStateShard(false, false);
 
-    // ── Per-glint stencil-slot pool ────────────────────────────────────────────
+    // Per-glint stencil-slot pool
     // Allocates a unique stencil value (1..255) per glint-mask call so overlapping decoration
     // glints (multiple Epic Knights decorations on one figure) don't share a stencil silhouette.
     private static int stencilSlotCounter = 0;
@@ -1538,7 +1558,7 @@ public final class CustomGlintRenderer extends RenderStateShard {
 
     private CustomGlintRenderer() { super("", () -> {}, () -> {}); }
 
-    // ── Shader-mod detection ──────────────────────────────────────────────────
+    // Shader-mod detection
     // Reflective so we don't need a compileOnly dep on the shader mod. Common shader
     // mods expose the same public detection surface, resolved once and cached as a
     // reflect.Method (see SHADER_GET_INSTANCE / SHADER_IS_IN_USE) and reused per call.

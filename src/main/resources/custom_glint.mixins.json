@@ -16,6 +16,7 @@
     "HumanoidArmorLayerMixin",
     "ItemInHandRendererMixin",
     "ItemRendererMixin",
+    "ItemStackFoilMixin",
     "LevelRendererMixin",
     "LivingEntityRendererMixin",
     "RenderBuffersMixin",

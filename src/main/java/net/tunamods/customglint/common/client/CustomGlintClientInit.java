@@ -87,7 +87,7 @@ public final class CustomGlintClientInit {
         // LOWEST so this HUD drain runs AFTER EnhancedVisuals' own RenderGuiEvent.Post pass (NORMAL). EV
         // drives its shader visuals through a PostChain that reads + rewrites the main target; if our drain
         // binds an offscreen FBO earlier in this same event, EV's subsequent PostChain pass turns the whole
-        // screen black (see EV-report.md). Running last means EV never sees an offscreen target bound during
+        // screen black. Running last means EV never sees an offscreen target bound during
         // its pass, and our ring still composites onto the finished HUD. (Container/screen drains fire on
         // ScreenEvent/ContainerScreenEvent; while a screen is open EV's RenderGuiEvent.Post doesn't run,
         // so they don't need this.)

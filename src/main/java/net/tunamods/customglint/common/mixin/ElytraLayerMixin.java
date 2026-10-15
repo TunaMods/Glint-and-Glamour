@@ -60,8 +60,6 @@ public class ElytraLayerMixin {
         applyElytraGlint((ElytraLayer<LivingEntity, ?>)(Object)this, poseStack, buffer, packedLight, entity, this.elytraModel);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void applyElytraGlint(ElytraLayer<LivingEntity, ?> self, PoseStack poseStack, MultiBufferSource buffer,
             int packedLight, LivingEntity entity, ElytraModel<?> elytraModel) {

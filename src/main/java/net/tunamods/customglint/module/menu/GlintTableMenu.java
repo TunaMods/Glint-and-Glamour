@@ -199,7 +199,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
             addSlot(new Slot(inv, col, x + col * 18, y + 58));
     }
 
-    // ── Import lock (NBT flag) ───────────────────────────────────────────────────
+    // Import lock (NBT flag)
     // Forge 1.20.1 has no DataComponent for this: a printed-library trim imported from a config file but not
     // yet crafted carries this NBT flag. It renders dimmed in the right grid and can't be withdrawn until the
     // player prints a matching trim, which clears the flag. Present = locked; absent = a normal owned trim.
@@ -431,6 +431,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (!(player instanceof ServerPlayer sp)) return;
         ResourceLocation design = ResourceLocation.tryParse(designId);
         if (design == null) return;
+        // Opacity is 0..8 glass levels; out of range it would wrap the alpha byte and dodge the glass cost.
+        opacity = Math.max(0, Math.min(8, opacity));
 
         // The active layer's speed/scale are clamped below; the below/above layers arrive straight from
         // GlintPrintPacket, so sanitize them the same way (finite floats, 8-color cap) before they persist
@@ -612,7 +614,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (named && !name.isEmpty() && (nameDye != null || nameRainbow)) container.removeItem(SLOT_NAME_DYE, 1);
         if (extraLayers > 0) container.removeItem(SLOT_LAYER_TEAR, extraLayers);
 
-        if (!sp.addItem(trim)) sp.drop(trim, false);
+        ItemStack given = trim.copy(); // addItem empties the stack it is handed, and trim is read below
+        if (!sp.addItem(given)) sp.drop(given, false);
         storePrinted(sp, trim);
 
         // A trim printed with all 8 colors earns "Ratatouille"; a layered trim "Like Ogres", the full 8 layers
@@ -666,7 +669,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (rainbowNeeded > 0) container.removeItem(SLOT_RAINBOW_DYE, rainbowNeeded);
         if (named && !name.isEmpty() && (nameDye != null || nameRainbow)) container.removeItem(SLOT_NAME_DYE, 1);
 
-        if (!sp.addItem(trim)) sp.drop(trim, false);
+        ItemStack given = trim.copy(); // addItem empties the stack it is handed, and trim is read below
+        if (!sp.addItem(given)) sp.drop(given, false);
         storePrinted(sp, trim);
     }
 

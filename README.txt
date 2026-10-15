@@ -42,12 +42,12 @@ In build.gradle:
     }
 
     dependencies {
-        compileOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.7.0")
-        runtimeOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.7.0")
+        compileOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.8.0")
+        runtimeOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.8.0")
 
         jarJar(group: 'net.tunamods.customglint', name: 'glint-and-glamour-api',
-               version: '[1.7.0,2.0)') {
-            jarJar.ranged(it, '[1.7.0,2.0)')
+               version: '[1.8.0,2.0)') {
+            jarJar.ranged(it, '[1.8.0,2.0)')
         }
     }
 
@@ -160,6 +160,42 @@ thread pool; the registries are unsynchronized HashMaps).
 
 registerLootGlint is wired by the full standalone's loot modifier and is not
 present in the bundled api jar.
+
+The smithing table never fires ItemCraftedEvent, so a craft glint misses an
+item made by smithing (a netherite upgrade). Use an item-type glint for that.
+
+
+Item-type glints (1.8.0+)
+
+Every stack of the item renders with the glint, however it was made (crafted,
+smithed, /give, creative, other mods' loot), with nothing written to NBT.
+
+  CustomGlint.registerItemGlint(Items.NETHERITE_SWORD, CustomGlint.EMBER,
+      new int[]{0xFFFF5500, 0xFFFFAA00});
+  CustomGlint.registerItemGlint(item, data);   // any Data: layers, chromatic
+  CustomGlint.getItemGlint(item);
+
+  - Render-time fallback: a stack's own glint always wins.
+  - Glint layers only; the glow outline still comes from the stack's NBT.
+  - read/has, recipes and the server never see it. Render code that reads
+    glints should call CustomGlint.readCached, which includes it.
+  - Register on both sides (the @Mod constructor is fine): it renders on the
+    client.
+  - A pack's /glint rule item (full jar) wins over your registration for the
+    same item.
+
+
+Glint rules (full jar, no code)
+
+Pack authors set the same kind of thing up in-game with /glint rule, saved to
+config/glint-and-glamour/rules.json:
+
+  /glint rule loot <loot table>    item gets the glint when rolled from it
+  /glint rule drop <entity type>   item gets the glint when that mob drops it
+  /glint rule item                 every stack of the item shows the glint
+
+loot and drop write NBT when the item is made (glow included); item renders
+only and syncs to clients. See the Overview for the full player guide.
 
 
 ================================================================================

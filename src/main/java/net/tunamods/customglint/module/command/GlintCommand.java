@@ -47,8 +47,8 @@ import java.util.function.Predicate;
 /**
  * The {@code /glint} command. Held-item subcommands act on the sender's main hand; the {@code entity}
  * subcommand acts on selector-matched living entities and broadcasts every change through
- * {@link EntityGlintEvents} so trackers see it. Everything here runs on the server, so no client-only
- * class may be referenced from this file.
+ * {@link EntityGlintEvents} so trackers see it; {@code rule} lives in {@link GlintRuleCommand}. Everything
+ * here runs on the server, so no client-only class may be referenced from this file.
  */
 public class GlintCommand {
 
@@ -156,6 +156,7 @@ public class GlintCommand {
                 .then(Commands.argument("name", StringArgumentType.word())
                     .executes(ctx -> export(ctx.getSource(),
                         StringArgumentType.getString(ctx, "name")))))
+            .then(GlintRuleCommand.node())
             .then(Commands.literal("entity")
                 .then(Commands.argument("targets", EntityArgument.entities())
                     .then(Commands.literal("apply")
@@ -315,8 +316,14 @@ public class GlintCommand {
             for (int color : layer.colors()) GlintTrimItem.addColor(trim, color);
             trim.getOrCreateTag().putFloat(GlintTrimItem.SPEED_TAG, layer.speed());
             trim.getOrCreateTag().putFloat(GlintTrimItem.SCALE_TAG, layer.patternScale());
+            trim.getOrCreateTag().putInt(GlintTrimItem.SCROLL_TAG, layer.scrollDir());
+            trim.getOrCreateTag().putFloat(GlintTrimItem.OFFSET_TAG, layer.scrollOffset());
             GlintTrimItem.setPattern(trim, layer.design());
             GlintTrimItem.setGlowing(trim, CustomGlint.isGlowing(held));
+            // setPattern/setGlowing re-emit the preview as a sequential layer; write the real one last so the
+            // simultaneous flag and seed survive (same fix as GiveGlintTrimPacket).
+            CustomGlint.write(trim, layers);
+            GlintTrimItem.setSeed(trim, layer.seed());
         } else {
             // Multi-layer: set flat tags from layer 0 for display, then copy the full glint tag verbatim
             CustomGlint.Layer layer0 = layers[0];
@@ -386,6 +393,8 @@ public class GlintCommand {
                 layerObj.addProperty("interpolate", layer.interpolate());
                 layerObj.addProperty("patternScale", layer.patternScale());
                 layerObj.addProperty("simultaneous", layer.simultaneous());
+                layerObj.addProperty("scroll", layer.scrollDir());
+                layerObj.addProperty("offset", layer.scrollOffset());
 
                 layersArray.add(layerObj);
             }

@@ -32,7 +32,7 @@ public final class GlintTablePlayerData {
         return pd.getCompound(ROOT);
     }
 
-    // ── Stored design names ─────────────────────────────────────────────────────
+    // Stored design names
 
     public static List<String> storedDesigns(Player player) {
         List<String> out = new ArrayList<>();
@@ -47,7 +47,7 @@ public final class GlintTablePlayerData {
         root(player).put(STORED, list);
     }
 
-    // ── Printed (painted) trim library ──────────────────────────────────────────
+    // Printed (painted) trim library
 
     public static List<ItemStack> printedTrims(Player player) {
         List<ItemStack> out = new ArrayList<>();
@@ -65,7 +65,7 @@ public final class GlintTablePlayerData {
         root(player).put(PRINTED, list);
     }
 
-    // ── Table slot contents ─────────────────────────────────────────────────────
+    // Table slot contents
 
     /** Fills {@code container} with the player's saved table contents (slot-indexed). */
     public static void loadContents(Player player, SimpleContainer container) {

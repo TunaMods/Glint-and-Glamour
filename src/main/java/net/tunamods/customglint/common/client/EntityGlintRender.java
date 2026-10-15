@@ -114,7 +114,7 @@ public final class EntityGlintRender {
         return resolveData(entity);
     }
 
-    // ── Glow outline capture ────────────────────────────────────────────────────────
+    // Glow outline capture
     // A glowing entity's body is re-recorded into the glow mask, tracing the real body shape against the
     // entity texture. The recording is the IN-PHASE TEE: the body is recorded DURING its single real draw
     // (no second model walk), routed through a CapturingModelConsumer that forwards every call to the real
