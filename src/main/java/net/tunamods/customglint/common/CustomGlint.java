@@ -241,8 +241,8 @@ public final class CustomGlint {
         if ("vanilla".equals(name)) return VANILLA;
         if ("chromatic".equals(name)) return CHROMATIC;
         try {
-            if (name.indexOf(':') >= 0) {
-                int c = name.indexOf(':');
+            int c = name.indexOf(':');
+            if (c >= 0) {
                 return new ResourceLocation(name.substring(0, c), "textures/glint/" + name.substring(c + 1) + ".png");
             }
             return res("textures/glint/" + name + ".png");
