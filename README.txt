@@ -42,8 +42,8 @@ In build.gradle:
     dependencies {
         jarJar(implementation("net.tunamods.customglint:glint-and-glamour-api")) {
             version {
-                strictly "[1.7.0,2.0)"
-                prefer "1.7.0"
+                strictly "[1.8.0,2.0)"
+                prefer "1.8.0"
             }
         }
     }
