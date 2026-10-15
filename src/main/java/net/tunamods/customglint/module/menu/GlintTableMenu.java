@@ -428,6 +428,8 @@ public class GlintTableMenu extends AbstractContainerMenu {
                       CustomGlint.Layer[] belowLayers, CustomGlint.Layer[] aboveLayers,
                       int[][] glowShardDyes) {
         if (!(player instanceof ServerPlayer sp)) return;
+        // Opacity is 0..8 glass levels; out of range it would wrap the alpha byte and dodge the glass cost.
+        opacity = Math.max(0, Math.min(8, opacity));
         // tryParse (not parse): designId is a raw client-supplied string; a malformed one would otherwise
         // throw ResourceLocationException on the server thread inside enqueueWork.
         ResourceLocation design = ResourceLocation.tryParse(designId);
