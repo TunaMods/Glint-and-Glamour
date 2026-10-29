@@ -38,11 +38,13 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Post-process glow outline backend (1.21.1). Captures glowing items' silhouettes into an offscreen
@@ -101,7 +103,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     // pass. The drain runs one pass per outline id, so with many glowing entities/icons on screen this is a
     // per-frame hot path. Re-resolved whenever compositeShader is reassigned (registerShaders on reload).
     private static Uniform uSearchRadius, uThicknessScale, uProjA, uProjB,
-            uTargetId, uGuiMode, uSoloTarget, uEdgeBleed;
+            uTargetId, uGuiMode, uEdgeBleed;
     // Silhouette shader: per-block distance scaling of the scene-occlusion bias (0 off-pack).
     private static Uniform uSilBiasScale;
 
@@ -130,7 +132,6 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                         uProjB          = shader.getUniform("ProjB");
                         uTargetId       = shader.getUniform("TargetId");
                         uGuiMode        = shader.getUniform("GuiMode");
-                        uSoloTarget     = shader.getUniform("SoloTarget");
                         uEdgeBleed      = shader.getUniform("EdgeBleed");
                     });
         } catch (Exception e) {
@@ -433,6 +434,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     /** Queue a world-space glowing item (third-person held / dropped / frame / other player). The pose
      *  must be a copy ({@code pose.last().copy()}); it is camera-relative and is replayed at drain. */
     public static void queueWorldItem(List<BakedQuad> quads, PoseStack.Pose pose, int light, int color) {
+        if (!pose.pose().isFinite()) return;
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
         worldJobs.add(new ItemJob(quads, pose, light, color, CAT_ITEM, null));
     }
@@ -443,6 +445,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  ModelView is the camera rotation) the rotation cancels and the silhouette lands exactly on the
      *  drawn hand item. */
     public static void queueHeldFpItem(List<BakedQuad> quads, PoseStack.Pose pose, int light, int color) {
+        if (!pose.pose().isFinite()) return;
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
         snapshotHeldFpMatrices();
         heldFpJobs.add(new ItemJob(quads, pose, light, color, CAT_HELD_FP, null));
@@ -456,6 +459,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  render pose translation) so the drain can clamp the ring to the nominal slot. */
     public static void queueGuiItem(List<BakedQuad> quads, PoseStack.Pose pose, int light, int color,
                                     float[] anchor) {
+        if (!pose.pose().isFinite()) return;
         guiJobs.add(new ItemJob(quads, pose, light, color, CAT_ITEM, anchor));
     }
 
@@ -468,6 +472,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                                          int category, int priority) {
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
         if (len < 20 || tex == null) return; // need at least one quad (4 verts * 5 floats)
+        if (!allFinite(data, len)) return;
         modelWorldJobs.add(new ModelJob(Arrays.copyOf(data, len), len, tex, color, key, category, priority, null, false));
     }
 
@@ -480,7 +485,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     public static void queueModelOutlineTriangles(float[] data, int len, ResourceLocation tex, int color, int key,
                                                   int category, int priority) {
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
-        if (tex == null) return;
+        if (tex == null || !allFinite(data, len)) return;
         float[] copy = trimToPrimitives(data, len, true);
         if (copy == null) return;
         modelWorldJobs.add(new ModelJob(copy, copy.length, tex, color, key, category, priority, null, true));
@@ -578,12 +583,56 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         chromaticPending = false;
     }
 
+    // A broken pose from another mod (a NaN arm swing from extreme haste, a zero-scale render) or any other
+    // failure inside one of our passes must cost that frame's rings, never the game. Every public pass runs
+    // through here: the first failure per pass is logged with its stack, the frame's queued jobs are dropped,
+    // and the GL state our passes change is put back for whatever renders next.
+    private static final Set<String> loggedFailures = new HashSet<>();
+
+    private static void guarded(String pass, Runnable body) {
+        try {
+            body.run();
+        } catch (RuntimeException e) {
+            if (loggedFailures.add(pass)) {
+                LOGGER.error("[customglint] {} failed; skipping glow and chromatic rings this frame", pass, e);
+            }
+            beginFrame();
+            restoreRenderState();
+        }
+    }
+
+    private static void restoreRenderState() {
+        try {
+            MASK_BUFFERS.endBatch();
+        } catch (RuntimeException ignored) {
+            // A half-built batch can't be flushed; the next frame starts a fresh one.
+        }
+        RenderSystem.setShaderTexture(1, 0);
+        RenderSystem.disableScissor();
+        RenderSystem.colorMask(true, true, true, true);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+        RenderSystem.defaultBlendFunc();
+        Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+    }
+
+    // Captured vertices are replayed and projected later; a non-finite one would poison the screen box.
+    private static boolean allFinite(float[] data, int len) {
+        for (int i = 0; i < len; i++) {
+            if (!Float.isFinite(data[i])) return false;
+        }
+        return true;
+    }
+
     // ── Drain ──────────────────────────────────────────────────────────────────
 
     /** Drain world-space outlines (items + glowing entities). Called at
      *  {@code RenderLevelStageEvent.AFTER_WEATHER}, where the live projection / modelview are the world
      *  ones the items and entities were drawn with. */
-    public static void drainWorld() {
+    public static void drainWorld() { guarded("drainWorld", GlowOutlineRenderer::drainWorldUnguarded); }
+
+    private static void drainWorldUnguarded() {
         drain(worldJobs, modelWorldJobs, true);
     }
 
@@ -593,7 +642,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  matrices the hand items were drawn under, so the captured camera-relative pose replays in place. The
      *  hand items have already been flushed ({@code endBatch}) by that point, so the ring composites over
      *  them. */
-    public static void drainHeldFp() {
+    public static void drainHeldFp() { guarded("drainHeldFp", GlowOutlineRenderer::drainHeldFpUnguarded); }
+
+    private static void drainHeldFpUnguarded() {
         if (heldFpJobs.isEmpty() && modelFpJobs.isEmpty()) { heldFpMatricesValid = false; return; }
         // Under a shader pack the drain runs at renderItemInHand RETURN, where the live modelview has been
         // popped back to the world one; replaying the captured hand modelview puts the silhouette back on the
@@ -629,7 +680,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  driven by the icon's on-screen size (GUI_RING_ITEM_PIXELS) rather than camera distance; (3) the live
      *  GUI scissor (e.g. the wand-preview box) is saved, intersected with each ring box, and restored, so
      *  the ring stays inside whatever the GUI was clipping to and never clobbers it. */
-    public static void drainGui() {
+    public static void drainGui() { guarded("drainGui", GlowOutlineRenderer::drainGuiUnguarded); }
+
+    private static void drainGuiUnguarded() {
         if (guiJobs.isEmpty() && modelGuiJobs.isEmpty()) return;
         if (silhouetteShader == null || compositeShader == null) {
             guiJobs.clear(); modelGuiJobs.clear(); return;
@@ -712,7 +765,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
             compositeBegin(main, searchRadius, false, true, 0.0f, 0.0f, maskTarget, 0);
             for (int i = 0; i < itemBoxes.size(); i++) {
                 Box box = itemBoxes.get(i);
-                compositePass(box, box.snap / searchRadius, box.id, isSolo(itemBoxes, i));
+                compositePass(box, box.snap / searchRadius, box.id);
             }
             compositeEnd();
         } else {
@@ -764,7 +817,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     private static boolean worldDeferredPending = false;
 
     /** Accumulate the world silhouettes into the mask now (matrices live) but defer the composite. */
-    public static void accumulateWorld() {
+    public static void accumulateWorld() { guarded("accumulateWorld", GlowOutlineRenderer::accumulateWorldUnguarded); }
+
+    private static void accumulateWorldUnguarded() {
         worldDeferredPending = false;
         if (worldJobs.isEmpty() && modelWorldJobs.isEmpty()) return;
         if (silhouetteShader == null || compositeShader == null) {
@@ -786,7 +841,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     /** Composite the deferred world outlines onto the (now pack-composited) main target. Called at
      *  {@code LevelRenderer.renderLevel} TAIL. No-op when nothing was deferred this frame. */
-    public static void compositeWorld() {
+    public static void compositeWorld() { guarded("compositeWorld", GlowOutlineRenderer::compositeWorldUnguarded); }
+
+    private static void compositeWorldUnguarded() {
         if (!worldDeferredPending) return;
         worldDeferredPending = false;
         if (worldDeferredMask == null) return;
@@ -852,7 +909,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     public static void queueGlintModel(float[] data, int len, ResourceLocation tex, CustomGlint.Data glint,
                                        int layerIdx, float[] color, int colorIdx, boolean triangles) {
         if (CustomGlintRenderer.isInShadowPass()) return;
-        if (tex == null || glint == null || color == null) return;
+        if (tex == null || glint == null || color == null || !allFinite(data, len)) return;
         float[] copy = trimToPrimitives(data, len, triangles);
         if (copy == null) return;
         float[] col = { color[0], color[1], color[2], color[3] };
@@ -888,7 +945,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                                     CustomGlint.Data glint, int layerIdx, boolean triangles, boolean isItem,
                                     boolean special, int dest, float brightness) {
         if (CustomGlintRenderer.isInShadowPass()) return;
-        if (tex == null || glint == null) return;
+        if (tex == null || glint == null || !allFinite(data, len)) return;
         float[] copy = trimToPrimitives(data, len, triangles);
         if (copy == null) return;
         ChromaJob job = new ChromaJob(copy, copy.length, tex, glint, layerIdx, triangles, isItem, special, brightness);
@@ -972,7 +1029,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     /** Render the queued world chromatic slicks into the isolated target NOW (world matrices live, scene depth
      *  bound); the composite blit is deferred to renderLevel TAIL. Called at {@code AFTER_WEATHER} under a pack. */
-    public static void accumulateChromaticWorld() {
+    public static void accumulateChromaticWorld() { guarded("accumulateChromaticWorld", GlowOutlineRenderer::accumulateChromaticWorldUnguarded); }
+
+    private static void accumulateChromaticWorldUnguarded() {
         chromaticPending = false;
         if (chromaticWorldJobs.isEmpty()) return;
         accumulateChromaJobs(chromaticWorldJobs, true);
@@ -981,7 +1040,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     }
 
     /** Composite the deferred world chromatic slick onto the (pack-composited) main target. renderLevel TAIL. */
-    public static void compositeChromaticWorld() {
+    public static void compositeChromaticWorld() { guarded("compositeChromaticWorld", GlowOutlineRenderer::compositeChromaticWorldUnguarded); }
+
+    private static void compositeChromaticWorldUnguarded() {
         if (!chromaticPending) return;
         chromaticPending = false;
         blitChromaticTarget();
@@ -998,7 +1059,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  occlusion, the GUI is 2D and icons don't overlap) and blit. Called at {@code GuiGraphics.flush} RETURN,
      *  the same point the glow GUI ring drains, so the ortho projection / modelview match what the icons drew
      *  under. */
-    public static void drainChromaticGui() {
+    public static void drainChromaticGui() { guarded("drainChromaticGui", GlowOutlineRenderer::drainChromaticGuiUnguarded); }
+
+    private static void drainChromaticGuiUnguarded() {
         if (chromaticGuiJobs.isEmpty()) return;
         accumulateChromaJobs(chromaticGuiJobs, false);
         blitChromaticTarget();
@@ -1015,7 +1078,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  (post-Iris-safe), BEFORE {@link #drainHeldFp} clears the shared FP matrix snapshot. The FP item is
      *  foreground so no scene occlusion; re-establish the captured hand modelview under a pack exactly like
      *  drainHeldFp. Reuses the (already world-composited) chromatic target, re-cleared for the hand items. */
-    public static void drainChromaticFp() {
+    public static void drainChromaticFp() { guarded("drainChromaticFp", GlowOutlineRenderer::drainChromaticFpUnguarded); }
+
+    private static void drainChromaticFpUnguarded() {
         if (chromaticFpJobs.isEmpty()) return;
         if (heldFpMatricesValid && CustomGlintRenderer.isShaderPackActive()) {
             Matrix4fStack mv = RenderSystem.getModelViewStack();
@@ -1120,7 +1185,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
             compositeBegin(main, searchRadius, true, false, projA, projB, mask, edgeBleed);
             for (int i = 0; i < boxes.size(); i++) {
                 Box box = boxes.get(i);
-                compositePass(box, box.scale, box.id, isSolo(boxes, i));
+                compositePass(box, box.scale, box.id);
             }
             compositeEnd();
         } else {
@@ -1181,13 +1246,11 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     private static int compositeEdgeBleed;
 
-    /** One scissored composite pass ringing a single outline id ({@code targetId}); {@code soloTarget}
-     *  enables the deep-interior early-out (see glow_composite.fsh). */
-    private static void compositePass(Box box, float thicknessScale, int targetId, boolean soloTarget) {
+    /** One scissored composite pass ringing a single outline id ({@code targetId}). */
+    private static void compositePass(Box box, float thicknessScale, int targetId) {
         if (box != null) RenderSystem.enableScissor(box.x, box.y, box.w, box.h);
         if (uThicknessScale != null) uThicknessScale.set(thicknessScale);
         if (uTargetId != null) uTargetId.set(targetId);
-        if (uSoloTarget != null) uSoloTarget.set(soloTarget ? 1 : 0);
         // Scale the inward edge-bleed by the SAME per-object distance factor as the rest of the ring, so the
         // gap-closing bleed thins out with distance instead of staying a fixed texel and reading as a fatter
         // ring on a small far object. (The hairline gap it closes is invisible at distance anyway.)
@@ -1322,23 +1385,6 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                 }
             }
         }
-    }
-
-    /** True when {@code boxes[i]}'s screen rect overlaps no OTHER box's rect, so within its scissor the only
-     *  silhouette texels are its own object's (a non-overlapping object's mask texels are bounded by its box).
-     *  That lets the composite take the deep-interior early-out (SoloTarget): an interior pixel of the target
-     *  can't ring because no different id is within reach. Pixel-identical to the full scan; just far cheaper
-     *  for a single screen-filling silhouette. O(n^2), n = distinct on-screen outlines (small). */
-    private static boolean isSolo(List<Box> boxes, int i) {
-        Box a = boxes.get(i);
-        for (int j = 0; j < boxes.size(); j++) {
-            if (j != i && boxesOverlap(a, boxes.get(j))) return false;
-        }
-        return true;
-    }
-
-    private static boolean boxesOverlap(Box a, Box b) {
-        return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     }
 
     private static Box unionBox(Box a, Box b) {
