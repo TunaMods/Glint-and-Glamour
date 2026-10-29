@@ -249,7 +249,8 @@ public final class CustomGlintRenderer {
      *  with the NEAREST overlapping surface, so the following wing glint/chromatic pass (LEQUAL,
      *  {@link GlintPipelines#GLINT_OVERLAY_WING} / {@link GlintPipelines#CHROMATIC_OVERLAY_WING}) drops the
      *  farther one instead of additively doubling the seam down the spine. Shared by the normal and chromatic
-     *  wing passes; the depth depends only on geometry + cutout, not the design. */
+     *  wing passes; the depth depends only on geometry + cutout, not the design. Quad items reuse it, keyed by atlas, to
+     *  hide their own far faces in the same drain. */
     public static RenderType forWingDepthPrepass(Identifier texture) {
         if (texture == null) return null;
         RenderType rt = BY_WING_DEPTH.computeIfAbsent(texture, t ->
@@ -1121,8 +1122,9 @@ public final class CustomGlintRenderer {
      *  {@code atlasW/16}, matching {@link #forGlint}'s flat-item calibration. */
     public static RenderType forItemGlintOverlay(Data glint, int layerIdx, Identifier atlas) {
         ensureAtlasDims();
+        // wing=true: LEQUAL against the item depth pre-pass, see drainChromaticOverlays.
         return chromaticOverlayRT(glint.layers()[layerIdx], "item_ov|" + atlas,
-                cachedAtlasW / 16.0f * CHROMATIC_FLAT_ITEM_MATCH, atlas);
+                cachedAtlasW / 16.0f * CHROMATIC_FLAT_ITEM_MATCH, atlas, SCENE_DEPTH_ID, true);
     }
 
     // ── Post-Iris NORMAL-glint overlay RenderTypes ───────────────────────────────────────────────
@@ -1244,7 +1246,8 @@ public final class CustomGlintRenderer {
         RenderType cached = BY_GLINT_OVERLAY.computeIfAbsent(key, k -> {
             RenderType rt = GlintPipelines.glintOverlayType(MOD_ID + ":custom_glint_overlay|" + k.hashCode(),
                     gray, atlas, SCENE_DEPTH_ID,
-                    () -> GlintPipelines.itemAnimationMatrix(speed, scaleU, scaleV, ps, colorIdx, cc, scrollDir, scrollOffset));
+                    () -> GlintPipelines.itemAnimationMatrix(speed, scaleU, scaleV, ps, colorIdx, cc, scrollDir, scrollOffset),
+                    true);   // wing pipeline: LEQUAL against the item depth pre-pass, see drainChromaticOverlays
             return rt;
         });
         return cached;
