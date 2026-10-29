@@ -41,10 +41,12 @@ import org.slf4j.Logger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Post-process glow-outline backend (1.20.1). Captures glowing items' silhouettes into an offscreen
@@ -106,7 +108,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     private static ShaderInstance compositeShader;
 
     private static Uniform uSearchRadius, uThicknessScale, uProjA, uProjB,
-            uTargetId, uGuiMode, uSoloTarget;
+            uTargetId, uGuiMode;
     private static Uniform uSilBiasScale;
 
     /** Mod-event-bus listener; registered from {@link CustomGlintClientInit#run}. The
@@ -134,7 +136,6 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                         uProjB          = shader.getUniform("ProjB");
                         uTargetId       = shader.getUniform("TargetId");
                         uGuiMode        = shader.getUniform("GuiMode");
-                        uSoloTarget     = shader.getUniform("SoloTarget");
                     });
         } catch (Exception e) {
             LOGGER.error("[{}] failed to register glow-outline shaders", MOD_ID, e);
@@ -376,6 +377,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  the camera transform and offset the ring). */
     public static void queueWorldItem(List<BakedQuad> quads, PoseStack.Pose pose, Matrix4f modelView,
                                       int light, int color) {
+        if (!pose.pose().isFinite()) return;
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
         worldJobs.add(new ItemJob(quads, pose, modelView, light, color, CAT_ITEM, null, null));
     }
@@ -388,6 +390,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  scissor is captured here so the ring clips to whatever clip was active when the icon drew. */
     public static void queueGuiItem(List<BakedQuad> quads, PoseStack.Pose pose, int light, int color,
                                     float[] anchor) {
+        if (!pose.pose().isFinite()) return;
         guiJobs.add(new ItemJob(quads, pose, null, light, color, CAT_ITEM, anchor, captureScissor()));
     }
 
@@ -412,6 +415,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  projection, so it composites over the already-flushed hand items. CAT_HELD_FP → a thicker ring. */
     public static void queueHeldFpItem(List<BakedQuad> quads, PoseStack.Pose pose, Matrix4f modelView,
                                        int light, int color) {
+        if (!pose.pose().isFinite()) return;
         if (CustomGlintRenderer.isInShadowPass()) return;
         snapshotHeldFpProjection();
         heldFpJobs.add(new ItemJob(quads, pose, modelView, light, color, CAT_HELD_FP, null, null));
@@ -433,6 +437,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                                 int color, ItemDisplayContext ctx, int key, float[] anchor) {
         if (CustomGlintRenderer.isInShadowPass()) return;
         if (len < 20 || tex == null) return; // need at least one quad (4 verts * 5 floats)
+        if (!allFinite(data, len)) return;
         float[] copy = new float[len];
         System.arraycopy(data, 0, copy, 0, len);
         boolean gui = ctx == ItemDisplayContext.GUI;
@@ -456,6 +461,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                                          int color, int key, int category) {
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
         if (len < 20 || tex == null) return;              // need at least one quad (4 verts * 5 floats)
+        if (!allFinite(data, len)) return;
         float[] copy = new float[len];
         System.arraycopy(data, 0, copy, 0, len);
         modelWorldJobs.add(new ModelJob(copy, len, tex, modelView, color, key, category, null, null, false));
@@ -470,7 +476,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     public static void queueModelOutlineTriangles(float[] data, int len, ResourceLocation tex, Matrix4f modelView,
                                                   int color, int key, int category) {
         if (CustomGlintRenderer.isInShadowPass()) return; // don't capture the Iris shadow-map pass
-        if (tex == null) return;
+        if (tex == null || !allFinite(data, len)) return;
         int verts = len / 5;
         verts -= verts % 3;               // TRIANGLES: whole primitives only
         int usable = verts * 5;
@@ -493,12 +499,56 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         heldFpProjValid = false;
     }
 
+    // A broken pose from another mod (a NaN arm swing from extreme haste, a zero-scale render) or any other
+    // failure inside one of our passes must cost that frame's rings, never the game. Every public pass runs
+    // through here: the first failure per pass is logged with its stack, the frame's queued jobs are dropped,
+    // and the GL state our passes change is put back for whatever renders next.
+    private static final Set<String> loggedFailures = new HashSet<>();
+
+    private static void guarded(String pass, Runnable body) {
+        try {
+            body.run();
+        } catch (RuntimeException e) {
+            if (loggedFailures.add(pass)) {
+                LOGGER.error("[customglint] {} failed; skipping glow rings this frame", pass, e);
+            }
+            beginFrame();
+            restoreRenderState();
+        }
+    }
+
+    private static void restoreRenderState() {
+        try {
+            MASK_BUFFERS.endBatch();
+        } catch (RuntimeException ignored) {
+            // A half-built batch can't be flushed; the next frame starts a fresh one.
+        }
+        RenderSystem.setShaderTexture(1, 0);
+        RenderSystem.disableScissor();
+        RenderSystem.colorMask(true, true, true, true);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+        RenderSystem.defaultBlendFunc();
+        Minecraft.getInstance().getMainRenderTarget().bindWrite(true);
+    }
+
+    // Captured vertices are replayed and projected later; a non-finite one would poison the screen box.
+    private static boolean allFinite(float[] data, int len) {
+        for (int i = 0; i < len; i++) {
+            if (!Float.isFinite(data[i])) return false;
+        }
+        return true;
+    }
+
     // Drain
 
     /** Drain world-space item outlines at {@code RenderLevelStageEvent.AFTER_WEATHER}, where the live
      *  projection is the world one the items were drawn with. Used off-pack only; under a shader pack the
      *  drain is deferred to {@link #drainWorldShaderPack()} (see that method). */
-    public static void drainWorld() { drain(worldJobs, modelWorldJobs, RenderSystem.getProjectionMatrix()); }
+    public static void drainWorld() {
+        guarded("drainWorld", () -> drain(worldJobs, modelWorldJobs, RenderSystem.getProjectionMatrix()));
+    }
 
     // Snapshot of the hand-FOV projection taken when a first-person held item is captured (inside the hand
     // pass, where it is drawn). Replayed at the drain rather than read live there, because the live matrix can
@@ -521,7 +571,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     /** Drain first-person held-item outlines at the RETURN of {@code renderItemInHand}, replaying the
      *  hand-FOV projection snapshotted when the item was drawn (see {@link #snapshotHeldFpProjection()}). */
-    public static void drainHeldFp() {
+    public static void drainHeldFp() { guarded("drainHeldFp", GlowOutlineRenderer::drainHeldFpUnguarded); }
+
+    private static void drainHeldFpUnguarded() {
         drain(heldFpJobs, modelFpJobs, heldFpProjValid ? HELD_FP_PROJ : RenderSystem.getProjectionMatrix(), false);
         heldFpProjValid = false;
     }
@@ -543,7 +595,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  at the RETURN of {@code LevelRenderer.renderLevel} ({@code finalizeLevelRendering}), overwriting
      *  anything drawn during the earlier RenderLevelStageEvent phases, so under a pack the ring must be
      *  composited AFTER that, replaying the {@link #snapshotWorldProjection() AFTER_WEATHER} projection. */
-    public static void drainWorldShaderPack() {
+    public static void drainWorldShaderPack() { guarded("drainWorldShaderPack", GlowOutlineRenderer::drainWorldShaderPackUnguarded); }
+
+    private static void drainWorldShaderPackUnguarded() {
         if (!worldProjValid) { worldJobs.clear(); modelWorldJobs.clear(); return; }
         drain(worldJobs, modelWorldJobs, WORLD_PROJ);
     }
@@ -561,7 +615,9 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  driven by the icon's on-screen size (GUI_RING_ITEM_PIXELS) not camera distance; (4) each ring box is
      *  clipped to the GL scissor captured when that icon drew (wand-preview box, scroll viewport), so the
      *  per-icon clip survives this drain running after the screen's scissor was popped. */
-    public static void drainGui() {
+    public static void drainGui() { guarded("drainGui", GlowOutlineRenderer::drainGuiUnguarded); }
+
+    private static void drainGuiUnguarded() {
         if (guiJobs.isEmpty() && modelGuiJobs.isEmpty()) return;
         if (silhouetteShader == null || compositeShader == null) { guiJobs.clear(); modelGuiJobs.clear(); return; }
 
@@ -629,7 +685,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                 compositeBegin(main, maskTarget, searchRadius, false, true, 0.0f, 0.0f);
                 for (int i = 0; i < itemBoxes.size(); i++) {
                     Box box = itemBoxes.get(i);
-                    compositePass(box, box.snap / searchRadius, box.id, isSolo(itemBoxes, i));
+                    compositePass(box, box.snap / searchRadius, box.id);
                 }
                 compositeEnd();
             }
@@ -874,7 +930,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         compositeBegin(main, maskTarget, searchRadius, true, false, projA, projB);
         for (int i = 0; i < boxes.size(); i++) {
             Box box = boxes.get(i);
-            compositePass(box, box.scale, box.id, isSolo(boxes, i));
+            compositePass(box, box.scale, box.id);
         }
         compositeEnd();
     }
@@ -904,11 +960,10 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         if (uGuiMode != null) uGuiMode.set(guiMode ? 1 : 0);
     }
 
-    private static void compositePass(Box box, float thicknessScale, int targetId, boolean soloTarget) {
+    private static void compositePass(Box box, float thicknessScale, int targetId) {
         RenderSystem.enableScissor(box.x, box.y, box.w, box.h);
         if (uThicknessScale != null) uThicknessScale.set(thicknessScale);
         if (uTargetId != null) uTargetId.set(targetId);
-        if (uSoloTarget != null) uSoloTarget.set(soloTarget ? 1 : 0);
 
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder bb = tess.getBuilder();
@@ -1027,20 +1082,6 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                 }
             }
         }
-    }
-
-    /** True when {@code boxes[i]} overlaps no OTHER box, so within its scissor only its own silhouette
-     *  texels exist, enabling the composite's deep-interior early-out. */
-    private static boolean isSolo(List<Box> boxes, int i) {
-        Box a = boxes.get(i);
-        for (int j = 0; j < boxes.size(); j++) {
-            if (j != i && boxesOverlap(a, boxes.get(j))) return false;
-        }
-        return true;
-    }
-
-    private static boolean boxesOverlap(Box a, Box b) {
-        return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     }
 
     private static Box unionBox(Box a, Box b) {

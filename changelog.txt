@@ -1,3 +1,11 @@
+[1.9.0]
+
+Altered:
+- Glow outlines cost less to draw when glowing things overlap on screen, like a player in glow-trimmed armor holding a glowing item. They look exactly the same
+
+Fixed:
+- A broken arm or item pose from another mod, such as very high Haste, can no longer crash the game through the glow outlines. If a glow pass fails, that frame skips its outlines and the error is logged once
+
 [1.8.0]
 
 Added:
