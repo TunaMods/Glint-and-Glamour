@@ -41,14 +41,6 @@ uniform int TargetId;
 // SQUARE (Chebyshev) so corners stay crisp, and the opening guard is skipped (the GUI silhouette is clean,
 // and the guard would erode a thin ring). Kept off the world path so 3D items are unaffected.
 uniform int GuiMode;
-// 1 = this composite pass's target object is the ONLY silhouette within its scissor box (no other id's
-// texels can reach any pixel here; the drain sets it when the box overlaps no other object's box). That
-// lets a pixel INSIDE the target's own silhouette skip the whole kernel: a ring needs a DIFFERENT id within
-// reach and there is none, so an interior pixel can never ring. This is the deep-interior early-out, the
-// dominant cost when a single filled silhouette (a close entity) covers much of the screen, since every one
-// of its interior pixels would otherwise scan the full kernel only to discard. Pixel-identical output: the
-// ring band (empty pixels) and any different-id pixel still scan. 0 = boxes overlap → full scan everywhere.
-uniform int SoloTarget;
 // Inward edge bleed in texels (0 = off). Under a shader pack the pack's final image renders the item a hair
 // INSIDE our geometric silhouette (edge AA / alpha cutoff), leaving a hairline gap before the outward-only
 // ring. When >0, the target silhouette's own border pixels (a target pixel within EdgeBleed texels of a
@@ -87,7 +79,7 @@ void main() {
     // Inward edge bleed (shader-pack path): if this pixel IS the target silhouette and sits within EdgeBleed
     // texels of an EMPTY pixel, it's an outer border pixel: paint it the target's own colour so the ring
     // straddles the geometric edge and closes the hairline gap the pack's slightly-inset item leaves. Runs
-    // before the SoloTarget discard so border pixels survive; deep-interior pixels (no empty neighbour) fall
+    // before the interior discard so border pixels survive; deep-interior pixels (no empty neighbour) fall
     // through to the early-out. No-op when EdgeBleed == 0 (off-pack + GUI).
     // The neighbour test is vn == 0 (empty), NOT vn < 128. An OCCLUDED neighbour (1..127) is the item's own
     // shape hidden behind scene geometry, e.g. a chestplate behind the player's arm, not an outer edge.
@@ -103,10 +95,11 @@ void main() {
         }
     }
 
-    // Deep-interior early-out: when the target is the only object in this scissor box, a pixel inside the
-    // target's own silhouette (same id) can never ring, so skip the kernel entirely. Placed before the
-    // ringDist sample so the discard path costs a single mask tap.
-    if (SoloTarget != 0 && keyP != 0 && (keyP & 31) == TargetId) { discard; }
+    // Interior early-out: a pixel inside the target's own silhouette can never ring. The kernel only takes
+    // target-id sources, and a source with this pixel's own id is skipped, so for a target-id pixel every tap
+    // is rejected whatever else overlaps the box. Skipping it here is pixel-identical and saves the whole
+    // kernel on the silhouette's interior. Placed before the ringDist sample so the discard costs one mask tap.
+    if (keyP != 0 && (keyP & 31) == TargetId) { discard; }
 
     float ringDist = cg_eyeDist(texture(Sampler1, ctr).r); // this pixel's own silhouette depth (or far)
 
