@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Holds the per-item glint on the reusable {@link ItemStackRenderState} scratch object and publishes it
  * into {@link GlintCarrier#SUBMIT_GLINT} for the duration of {@code submit(...)} so each freshly built
- * {@code ItemSubmit} node can carry it to the deferred draw. The glint is attached during
+ * {@code ItemFeatureRenderer.Submit} node can carry it to the deferred draw. The glint is attached during
  * {@code ItemModelResolver.updateForTopItem} (see {@code ItemModelResolverMixin}); it is null for items
  * with no custom glint.
  */

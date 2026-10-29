@@ -4,10 +4,10 @@ import net.tunamods.customglint.common.CustomGlint;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Carrier interface mixed onto {@code ItemStackRenderState} and {@code SubmitNodeStorage$ItemSubmit}
+ * Carrier interface mixed onto {@code ItemStackRenderState} and {@code ItemFeatureRenderer.Submit}
  * so the per-item glint {@link CustomGlint.Data} can travel from render-state extraction (where the
- * {@code ItemStack} is known) to the deferred foil draw in {@code ItemFeatureRenderer.renderItem}
- * (where only the {@code ItemSubmit} node is available). The 1.21.5+ submit-node rework decoupled the
+ * {@code ItemStack} is known) to the deferred foil draw in {@code ItemFeatureRenderer.prepareSubmit}
+ * (where only the {@code ItemFeatureRenderer.Submit} node is available). The 1.21.5+ submit-node rework decoupled the
  * draw from the stack, so the glint must ride the node rather than a frame-scoped {@code ThreadLocal}.
  *
  * <p>Lives outside the {@code common.mixin} package because Mixin reserves that package and forbids

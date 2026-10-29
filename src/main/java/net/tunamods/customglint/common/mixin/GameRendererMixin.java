@@ -28,9 +28,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@code renderItemInHand} HEAD (after {@code hudProjection} is configured) and hand it to
  * {@link EntityGlintRender} for the held-item composite scissor.
  *
- * <p><b>Held-item glow drain under an active Iris pack.</b> Off the shader path the first-person held
- * item's outline is drained inside {@code renderHandsWithItems} RETURN ({@code ItemInHandRendererMixin}),
- * while the hand pose's modelview is still on the stack. Under a pack Iris cancels vanilla's
+ * <p><b>Held-item glow drain off the shader path</b> runs right after the hand's
+ * {@code renderAllFeatures} inside {@code renderItemInHand}: in 26.2 that call is what prepares the hand's
+ * quad items (and so queues their outline jobs) and draws them, and the camera modelview is still pushed, so
+ * the ring projects exactly like the item did. That point also closes the hand window
+ * {@code ItemInHandRendererMixin} opened.
+ *
+ * <p><b>Held-item glow drain under an active Iris pack.</b> Under a pack Iris cancels vanilla's
  * {@code renderHandsWithItems} ({@code MixinGameRenderer.iris$disableVanillaHandRendering}) and renders the
  * hand itself, in-pipeline, via {@code HandRenderer.renderSolid}, baking the hand perspective + bob into
  * the uploaded projection and drawing with an identity modelview. So the held-item drain moves HERE, to
@@ -50,6 +54,23 @@ public class GameRendererMixin {
     private void cg_captureHandProjection(CameraRenderState cameraState, float deltaPartialTick,
             Matrix4fc modelViewMatrix, CallbackInfo ci) {
         EntityGlintRender.setFirstPersonProjection(hudProjection.getMatrix(new Matrix4f()));
+    }
+
+    @Inject(method = "renderItemInHand",
+            at = @At(value = "INVOKE", shift = At.Shift.AFTER,
+                    target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures(Lnet/minecraft/client/renderer/SubmitNodeStorage;)V"),
+            require = 0)
+    private void cg_drainHeldItemOutline(CameraRenderState cameraState, float deltaPartialTick,
+            Matrix4fc modelViewMatrix, CallbackInfo ci) {
+        EntityGlintRender.endFirstPersonHand();
+        // Under an active Iris pack this point is still inside the hand's pack pass, so compositing here
+        // hijacks the framebuffer into Iris's gbuffer (the 1st-person black box). Leave whatever's queued
+        // in place; the RETURN drain below takes it, just past the hand pass (no hijack).
+        if (CustomGlintRenderer.isShaderPackActive()) return;
+        // Full-screen (no scissor): the hand item's pose is in view space, not camera-relative world
+        // space, so the world projection used to size per-group scissors wouldn't line up. Only the held
+        // item is queued here (one group), so a full-screen composite costs next to nothing.
+        EntityGlintRender.drainBodyOutlines(false);
     }
 
     // TRIED (attempt 1, insufficient ALONE): adding only this RETURN drain did nothing, the held item
@@ -79,7 +100,7 @@ public class GameRendererMixin {
     private void cg_drainHeldItemOutlineUnderShaders(CameraRenderState cameraState, float deltaPartialTick,
             Matrix4fc modelViewMatrix, CallbackInfo ci) {
         if (!CustomGlintRenderer.isShaderPackActive()) {
-            return;   // off the pack path ItemInHandRendererMixin already drained the held item.
+            return;   // off the pack path cg_drainHeldItemOutline already drained the held item.
         }
         // Rebuild the hand bob (bobHurt + optional bobView) into a fresh pose, Iris baked this into its
         // projection; we instead carry it in the modelview because our ProjMat is the plain hudProjection.

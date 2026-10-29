@@ -8,6 +8,6 @@ public final class GlintWandClientHandler {
     private GlintWandClientHandler() {}
 
     public static void openEditor(InteractionHand hand) {
-        Minecraft.getInstance().setScreen(new GlintEditorScreen(hand));
+        Minecraft.getInstance().gui.setScreen(new GlintEditorScreen(hand));
     }
 }

@@ -69,6 +69,16 @@ const float RING_OCCLUSION_BIAS = 0.10;
 // antialiases the outer boundary and the scallop with it. Larger blurs the ring, smaller brings the steps back.
 const float EDGE_FEATHER = 1.0;
 
+// Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
+// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
+// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
+// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+float eyeDist(float windowDepth) {
+    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+    return ProjMat[3][2] / (ndc + ProjMat[2][2]);
+}
+
 void main() {
     vec2 texel = 1.0 / vec2(textureSize(MaskSampler, 0));
     int vP = int(texture(MaskSampler, texCoord).a * 255.0 + 0.5);
@@ -76,8 +86,7 @@ void main() {
 
     // This RING pixel's own scene distance, for the ring-occlusion test below. Computed once (depends only on
     // texCoord, not on the source being scanned).
-    float rNdc = texture(DepthSampler, texCoord).r * 2.0 - 1.0;
-    float ringDist = ProjMat[3][2] / (rNdc + ProjMat[2][2]);
+    float ringDist = eyeDist(texture(DepthSampler, texCoord).r);
 
     // NEAREST source wins. When two objects' outline bands overlap (a sheep behind a player's armored arm),
     // BOTH have a visible silhouette edge within reach of this pixel, so both want to ring it. Returning on
@@ -111,8 +120,7 @@ void main() {
             // per-category reach so a far (small-on-screen) object gets a proportionally thinner ring.
             vec2 srcUV = texCoord + vec2(float(dx), float(dy)) * texel;
             float srcDepthRaw = texture(MaskDepthSampler, srcUV).r;
-            float ndc = srcDepthRaw * 2.0 - 1.0;
-            float srcDist = ProjMat[3][2] / (ndc + ProjMat[2][2]);
+            float srcDist = eyeDist(srcDepthRaw);
             // A VISIBLE silhouette source can only sit on the cleared far plane (depth ~1.0) if its geometry
             // never wrote to the main depth buffer, i.e. the first-person held item, which under an Iris pack
             // is drawn into Iris's gbuffer, not the main target, so the composite samples the cleared far value
@@ -123,7 +131,8 @@ void main() {
             // Since srcDist moved to MaskDepthSampler this almost never fires: the mask writes its own depth
             // for the hand item too, and that reads as the real (very close) distance, which clamps to full
             // THICKNESS on its own. Kept as the fallback for any source whose mask depth went unwritten.
-            bool nearField = srcDepthRaw >= 0.999999;
+            // 26.2 is reversed-Z: the cleared far plane is depth 0.0, not the ~1.0 above.
+            bool nearField = srcDepthRaw <= 0.000001;
             float scale = nearField ? 1.0 : clamp(REF_DIST / max(srcDist, 0.001), MIN_SCALE, 1.0);
             float r = THICKNESS[keyN >> 5] * scale;             // this source's distance-scaled reach
             // Coverage instead of an in/out test: full inside the reach, fading over the last texel.

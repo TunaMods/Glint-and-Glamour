@@ -109,12 +109,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
     public boolean showNameDye = false, showGlowDye = false;
 
     /** The 16 vanilla dye items, indexed by {@link DyeColor#getId()}. */
-    public static final Item[] DYE_ITEMS = {
-            Items.WHITE_DYE, Items.ORANGE_DYE, Items.MAGENTA_DYE, Items.LIGHT_BLUE_DYE,
-            Items.YELLOW_DYE, Items.LIME_DYE, Items.PINK_DYE, Items.GRAY_DYE,
-            Items.LIGHT_GRAY_DYE, Items.CYAN_DYE, Items.PURPLE_DYE, Items.BLUE_DYE,
-            Items.BROWN_DYE, Items.GREEN_DYE, Items.RED_DYE, Items.BLACK_DYE
-    };
+    public static final Item[] DYE_ITEMS = Items.DYE.asList().toArray(new Item[0]);
 
     // The container is owned by the block entity (server) so its contents persist; the client gets a
     // transient mirror synced by the vanilla menu. The block-entity container forwards setChanged() to

@@ -129,7 +129,7 @@ public final class GlintTableModelClient {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return;
         for (BlockPos p : CLIENT_TABLES) {
-            mc.levelRenderer.setSectionDirty(
+            mc.levelExtractor.setSectionDirty(
                     SectionPos.blockToSectionCoord(p.getX()),
                     SectionPos.blockToSectionCoord(p.getY()),
                     SectionPos.blockToSectionCoord(p.getZ()));

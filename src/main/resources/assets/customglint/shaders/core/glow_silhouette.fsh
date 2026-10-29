@@ -54,6 +54,16 @@ out vec4 fragColor;
 const float MIN_BIAS = 0.015;
 const float SLOPE_BIAS = 1.5;
 
+// Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
+// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
+// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
+// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+float eyeDist(float windowDepth) {
+    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+    return ProjMat[3][2] / (ndc + ProjMat[2][2]);
+}
+
 void main() {
     if (texture(Sampler0, texCoord0).a == 0.0) {
         discard;
@@ -64,10 +74,7 @@ void main() {
     vec2 uv = (screenPos.xy / screenPos.w) * 0.5 + 0.5;
     float sceneDepth = texture(DepthSampler, uv).r;
 
-    // Window depth → linear eye distance via the same projection the body was drawn with. ndc in [-1,1];
-    // ProjMat[3][2] / (ndc + ProjMat[2][2]) yields the positive eye-space distance (near→near, far→far).
-    float ndc = sceneDepth * 2.0 - 1.0;
-    float sceneDist = ProjMat[3][2] / (ndc + ProjMat[2][2]);
+    float sceneDist = eyeDist(sceneDepth);
 
     float bias = max(MIN_BIAS, SLOPE_BIAS * fwidth(viewDist));
     bool visible = viewDist <= sceneDist + bias;

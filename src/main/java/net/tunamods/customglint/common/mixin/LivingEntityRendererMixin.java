@@ -35,7 +35,7 @@ public class LivingEntityRendererMixin {
 
     /**
      * Publish this renderer's body model for the span of {@code submit} so the per-layer glint hook
-     * ({@code SubmitNodeStorageMixin}) can tell the body's own {@code submitModel} apart from the
+     * ({@code SubmitNodeCollectionMixin}) can tell the body's own {@code submitModel} apart from the
      * RenderLayer submits and skip it, the body is glinted below by {@link #cg_entityGlint}; the layers
      * are glinted in the storage hook. Cleared at RETURN so a non-entity / non-living submit can't leave a
      * stale model that suppresses a later layer's glint.
@@ -94,7 +94,7 @@ public class LivingEntityRendererMixin {
         // setupAnim at AfterWeather, we stash the colour + texture on the render state here (where
         // getTextureLocation is in hand). ModelFeatureRendererMixin reads it back at the body draw and
         // tees the silhouette IN-PHASE on the already-posed model, exactly how vanilla's own glowing-
-        // entity outline works (ModelFeatureRenderer.renderModel re-renders into OutlineBufferSource).
+        // entity outline works (SubmitNodeCollection.submitModel adds a second outline-phase node for it).
         // The mask + occluded composite still runs once in drainBodyOutlines.
         if (r.glowing || r.glowColors.length > 0) {
             Identifier texture = ((LivingEntityRenderer) (Object) this).getTextureLocation(state);
