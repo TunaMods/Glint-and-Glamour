@@ -1,5 +1,5 @@
 Glint & Glamour - developer documentation
-Minecraft 26.2 / NeoForge 26.2 - MIT license (attribution required)
+Minecraft 26.3 / NeoForge 26.3 - MIT license (attribution required)
 ================================================================================
 
 Per-item animated enchantment glint with color, timing, and scale control. Works
@@ -35,7 +35,7 @@ In build.gradle:
     repositories {
         maven {
             name = "TunaMods Glint & Glamour"
-            url = "https://raw.githubusercontent.com/TunaMods/Glint-and-Glamour/26.2/mcmodsrepo"
+            url = "https://raw.githubusercontent.com/TunaMods/Glint-and-Glamour/26.3/mcmodsrepo"
         }
     }
 
