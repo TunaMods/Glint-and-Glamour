@@ -24,9 +24,6 @@ import net.minecraft.world.item.component.TooltipDisplay;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.items.ComponentItemHandler;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.tunamods.customglint.common.CustomGlint;
 import net.tunamods.customglint.module.block.ModBlocks;
 import net.tunamods.customglint.module.menu.GlintBagMenu;
@@ -54,10 +51,10 @@ public class GlintBagItem extends Item {
         super(properties);
     }
 
-    /** An {@link IItemHandler} backed by the bag stack's {@code minecraft:container} component, accepting only
-     *  storable Glint items. Used by the menu, the pickup hook, and the item-handler capability registration. */
-    public static IItemHandler createHandler(ItemStack stack) {
-        return new BagItemHandler(stack);
+    /** The bag's slots, backed by the stack's {@code minecraft:container} component and accepting only storable
+     *  Glint items. Used by the menu, the pickup hook, auto-collect and the Glint Table deposit. */
+    public static BagContainer contents(ItemStack stack) {
+        return new BagContainer(stack);
     }
 
     /** Whether this bag auto-collects. Default on (a bag with no flag yet). */
@@ -167,12 +164,12 @@ public class GlintBagItem extends Item {
         if (!isAutoCollect(stack)) return;
         if (level.getGameTime() % SCAN_INTERVAL != 0) return;
 
-        IItemHandler handler = createHandler(stack);
+        BagContainer bag = contents(stack);
         Inventory inv = player.getInventory();
         for (int i = 0; i < inv.getContainerSize(); i++) {
             ItemStack s = inv.getItem(i);
             if (s.isEmpty() || !isAutoCollectable(s)) continue; // glint loot only, never vacuums generic materials
-            inv.setItem(i, ItemHandlerHelper.insertItemStacked(handler, s, false));
+            inv.setItem(i, bag.insert(s));
         }
     }
 
@@ -185,21 +182,5 @@ public class GlintBagItem extends Item {
                 .append(Component.literal(on ? "ON" : "OFF").withStyle(on ? ChatFormatting.GREEN : ChatFormatting.RED)));
         tooltip.accept(Component.literal("Shift-right-click to toggle auto-collect").withStyle(ChatFormatting.DARK_GRAY));
         tooltip.accept(Component.literal("Shift-right-click a Glint Table to unload into it").withStyle(ChatFormatting.DARK_GRAY));
-    }
-
-    /** Item handler that reads from / writes back to the bag stack's {@code minecraft:container} component and
-     *  only accepts storable items. */
-    private static final class BagItemHandler extends ComponentItemHandler {
-        BagItemHandler(ItemStack bag) {
-            super(bag, DataComponents.CONTAINER, SIZE);
-        }
-
-        @Override
-        public boolean isItemValid(int slot, @NotNull ItemStack stack) {
-            // Must accept the empty stack: ComponentItemHandler.setStackInSlot throws on an invalid stack, and
-            // the menu clears slots by setting them empty (AbstractContainerMenu.initializeContents). Only
-            // reject real, non-storable items.
-            return stack.isEmpty() || canStore(stack);
-        }
     }
 }

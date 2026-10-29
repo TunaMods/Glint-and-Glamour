@@ -46,8 +46,7 @@ public class ModelFeatureRendererMixin {
         VertexConsumer target = buffer;
         if (submit.state() instanceof EntityRenderState state) {
             EntityGlintRender.GlowOutline go = state.getRenderData(EntityGlintRender.GLOW_OUTLINE);
-            // Our own glint nodes reuse the body model + render state; they must not tee a second silhouette.
-            if (go != null && !EntityGlintRender.isOwnRenderType(submit.renderType())) {
+            if (go != null) {
                 if (instance == go.model()) {
                     // Body: fan this single walk into the glow mask too, no extra traversal, using the
                     // real entity texture so the silhouette alpha-discards to the body shape.

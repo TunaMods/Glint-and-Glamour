@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Custom Glints GUI procedural-chromatic fragment shader. Same oil-slick as core/chromatic.fsh, but the
 // noise runs over the ITEM-LOCAL coords reconstructed from the cached atlas slot (Sampler0 = the slot, used
@@ -6,34 +7,21 @@
 // of TextureMat. Drawn as a GLYPH with BlendFunction.GLINT so it sits on top of the opaque icon and matches
 // the world glint's additive look. See GuiRendererMixin.cg_itemGlintOverlay / GuiItemChromaticRenderState.
 
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
-layout(std140) uniform Globals {
-    ivec3 CameraBlockPos;
-    vec3 CameraOffset;
-    vec2 ScreenSize;
-    float GlintAlpha;
-    float GameTime;
-    int MenuBlurRadius;
-    int UseRgss;
-};
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:globals.glsl>
 
 uniform sampler2D Sampler0;   // cached item slot, the silhouette mask
 uniform sampler2D Sampler1;   // palette strip (1px tall, one texel per colour)
 
-in vec2 texCoord0;
-in vec4 vertexColor;
-in float vGuiScale;
-in float vSeed;
-in float vCount;
-in float vPS;
-in float vSpeed;
+layout(location = 0) in vec2 texCoord0;
+layout(location = 1) in vec4 vertexColor;
+layout(location = 2) in float vGuiScale;
+layout(location = 3) in float vSeed;
+layout(location = 4) in float vCount;
+layout(location = 5) in float vPS;
+layout(location = 6) in float vSpeed;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 const float EDGE = 0.1;
 const float DENSITY = 14.0; // global chromatic fineness knob — keep in sync with

@@ -1,6 +1,7 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:projection.glsl>
+#include <minecraft:projection.glsl>
 
 // Custom Glints glow-outline composite: PER-OBJECT id-aware, PER-CATEGORY thickness, single pass. The
 // mask (core/glow_silhouette) packs a per-object KEY + visibility into alpha:
@@ -22,9 +23,9 @@ uniform sampler2D MaskSampler;
 uniform sampler2D DepthSampler;       // scene depth, sampled at the RING pixel
 uniform sampler2D MaskDepthSampler;   // the mask target's own depth, sampled at the SOURCE texel
 
-in vec2 texCoord;
+layout(location = 0) in vec2 texCoord;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // Per-category outline thickness, in texels (≈ screen px at DOWNSCALE=1). EDIT to taste. Index = category:
 //   [0] entity   [1] armor   [2] item (3rd-person held / dropped)   [3] held (first-person)
@@ -70,12 +71,14 @@ const float RING_OCCLUSION_BIAS = 0.10;
 const float EDGE_FEATHER = 1.0;
 
 // Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
-// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
-// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
-// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
-// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix (reversed-Z included); only the
+// depth -> ndc step depends on the clip depth range, which the shader compiler reports.
 float eyeDist(float windowDepth) {
-    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+#ifdef RENDERPEARL_DEPTH_IS_ZERO_TO_ONE
+    float ndc = windowDepth;
+#else
+    float ndc = windowDepth * 2.0 - 1.0;
+#endif
     return ProjMat[3][2] / (ndc + ProjMat[2][2]);
 }
 

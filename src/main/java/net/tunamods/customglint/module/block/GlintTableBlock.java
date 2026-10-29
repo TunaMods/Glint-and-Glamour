@@ -25,16 +25,9 @@ import net.tunamods.customglint.module.menu.GlintTableMenu;
  */
 public class GlintTableBlock extends HorizontalDirectionalBlock implements EntityBlock {
 
-    public static final MapCodec<GlintTableBlock> CODEC = simpleCodec(GlintTableBlock::new);
-
     public GlintTableBlock(BlockBehaviour.Properties properties) {
         super(properties);
         registerDefaultState(stateDefinition.any().setValue(FACING, Direction.NORTH));
-    }
-
-    @Override
-    protected MapCodec<? extends HorizontalDirectionalBlock> codec() {
-        return CODEC;
     }
 
     @Override

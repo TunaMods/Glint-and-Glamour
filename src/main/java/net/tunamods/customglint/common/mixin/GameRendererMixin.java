@@ -2,15 +2,16 @@ package net.tunamods.customglint.common.mixin;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.Projection;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.state.level.PlayerRenderState;
 import net.tunamods.customglint.common.client.CustomGlintRenderer;
 import net.tunamods.customglint.common.client.EntityGlintRender;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
-import org.joml.Matrix4fc;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,11 +29,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@code renderItemInHand} HEAD (after {@code hudProjection} is configured) and hand it to
  * {@link EntityGlintRender} for the held-item composite scissor.
  *
- * <p><b>Held-item glow drain off the shader path</b> runs right after the hand's
- * {@code renderAllFeatures} inside {@code renderItemInHand}: in 26.2 that call is what prepares the hand's
- * quad items (and so queues their outline jobs) and draws them, and the camera modelview is still pushed, so
- * the ring projects exactly like the item did. That point also closes the hand window
- * {@code ItemInHandRendererMixin} opened.
+ * <p><b>Held-item glow drain off the shader path</b> runs inside {@code renderItemInHand}, after the hand's
+ * features are prepared and drawn (that prepare is what queues quad items' outline jobs) and their render pass
+ * has closed, just before the camera modelview is popped, so the ring projects exactly like the item did. That
+ * point also closes the hand window {@code ItemInHandRendererMixin} opened. The hand may draw into its own
+ * depth target ({@code hud3DTarget}, when consistent depth is required), so this drain samples the depth view
+ * {@code renderItemInHand} was given, not the main target's. The pack drain below uses the main depth.
  *
  * <p><b>Held-item glow drain under an active Iris pack.</b> Under a pack Iris cancels vanilla's
  * {@code renderHandsWithItems} ({@code MixinGameRenderer.iris$disableVanillaHandRendering}) and renders the
@@ -51,17 +53,18 @@ public class GameRendererMixin {
     @Shadow private void bobView(CameraRenderState cameraState, PoseStack poseStack) { throw new AssertionError(); }
 
     @Inject(method = "renderItemInHand", at = @At("HEAD"), require = 0)
-    private void cg_captureHandProjection(CameraRenderState cameraState, float deltaPartialTick,
-            Matrix4fc modelViewMatrix, CallbackInfo ci) {
+    private void cg_captureHandProjection(CameraRenderState cameraState, PlayerRenderState playerState,
+            GpuTextureView depthTextureView, CallbackInfo ci) {
         EntityGlintRender.setFirstPersonProjection(hudProjection.getMatrix(new Matrix4f()));
     }
 
+    // Before the camera-modelview pop, the only Matrix4fStack.popMatrix in the method: the hand's render pass
+    // (a try-with-resources around renderAllFeatures) has closed by then, so our drain can open its own passes.
     @Inject(method = "renderItemInHand",
-            at = @At(value = "INVOKE", shift = At.Shift.AFTER,
-                    target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures(Lnet/minecraft/client/renderer/SubmitNodeStorage;)V"),
+            at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4fStack;popMatrix()Lorg/joml/Matrix4fStack;"),
             require = 0)
-    private void cg_drainHeldItemOutline(CameraRenderState cameraState, float deltaPartialTick,
-            Matrix4fc modelViewMatrix, CallbackInfo ci) {
+    private void cg_drainHeldItemOutline(CameraRenderState cameraState, PlayerRenderState playerState,
+            GpuTextureView depthTextureView, CallbackInfo ci) {
         EntityGlintRender.endFirstPersonHand();
         // Under an active Iris pack this point is still inside the hand's pack pass, so compositing here
         // hijacks the framebuffer into Iris's gbuffer (the 1st-person black box). Leave whatever's queued
@@ -70,7 +73,7 @@ public class GameRendererMixin {
         // Full-screen (no scissor): the hand item's pose is in view space, not camera-relative world
         // space, so the world projection used to size per-group scissors wouldn't line up. Only the held
         // item is queued here (one group), so a full-screen composite costs next to nothing.
-        EntityGlintRender.drainBodyOutlines(false);
+        EntityGlintRender.drainBodyOutlines(false, depthTextureView);
     }
 
     // TRIED (attempt 1, insufficient ALONE): adding only this RETURN drain did nothing, the held item
@@ -97,8 +100,8 @@ public class GameRendererMixin {
     // and drain. ProjMat(hud) × bob × hand-local-pose == what Iris drew. Matches the off-pack path too
     // (there vanilla puts bob in the pose and pushes modelViewMatrix, netting the same bob × pose).
     @Inject(method = "renderItemInHand", at = @At("RETURN"), require = 0)
-    private void cg_drainHeldItemOutlineUnderShaders(CameraRenderState cameraState, float deltaPartialTick,
-            Matrix4fc modelViewMatrix, CallbackInfo ci) {
+    private void cg_drainHeldItemOutlineUnderShaders(CameraRenderState cameraState, PlayerRenderState playerState,
+            GpuTextureView depthTextureView, CallbackInfo ci) {
         if (!CustomGlintRenderer.isShaderPackActive()) {
             return;   // off the pack path cg_drainHeldItemOutline already drained the held item.
         }
@@ -113,10 +116,12 @@ public class GameRendererMixin {
         mvStack.pushMatrix();
         mvStack.set(bob.last().pose());   // absolute: hand items are hand-local; bob is the whole modelview.
         try {
-            EntityGlintRender.drainBodyOutlines(false);
+            // Main depth, not depthTextureView: Iris draws the hand into the level depth itself and never touches
+            // the hand depth vanilla would have used, so testing against that hides nothing.
+            EntityGlintRender.drainBodyOutlines(false, null);
             // First-person held chromatic items: re-render post-Iris with the hand projection + bob modelview
             // in place (same state the glow FP drain uses). See EntityGlintRender.drainChromaticOverlays.
-            EntityGlintRender.drainChromaticOverlays(true);
+            EntityGlintRender.drainChromaticOverlays(true, null);
         } finally {
             mvStack.popMatrix();
         }

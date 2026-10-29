@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Custom Glints GUI procedural-chromatic vertex shader. The GUI analog of core/chromatic.vsh: draws the
 // live oil-slick over a glinted item's cached atlas icon (so the base icon stays cached). The batched GUI
@@ -9,30 +10,22 @@
 //   UV2.x = patternScale*4096   UV2.y = guiScale (low 7 bits) | speed*16 (high bits)
 // UV0 = the atlas slot coords (silhouette mask + item-local reconstruction). Pairs with gui_chromatic.fsh.
 
-// DynamicTransforms + Projection inlined (startup core shaders can't moj_import).
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
-layout(std140) uniform Projection {
-    mat4 ProjMat;
-};
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
 
-in vec3 Position;
-in vec2 UV0;
-in ivec2 UV1;
-in ivec2 UV2;
-in vec4 Color;
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec2 UV0;
+layout(location = 2) in ivec2 UV1;
+layout(location = 3) in ivec2 UV2;
+layout(location = 4) in vec4 Color;
 
-out vec2 texCoord0;
-out vec4 vertexColor;
-out float vGuiScale;
-out float vSeed;
-out float vCount;
-out float vPS;
-out float vSpeed;
+layout(location = 0) out vec2 texCoord0;
+layout(location = 1) out vec4 vertexColor;
+layout(location = 2) out float vGuiScale;
+layout(location = 3) out float vSeed;
+layout(location = 4) out float vCount;
+layout(location = 5) out float vPS;
+layout(location = 6) out float vSpeed;
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);

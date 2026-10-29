@@ -2,8 +2,8 @@ package net.tunamods.customglint.module.advancement;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.advancements.predicates.ContextAwarePredicate;
-import net.minecraft.advancements.predicates.entity.EntityPredicate;
+import net.minecraft.core.Holder;
+import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.minecraft.advancements.triggers.SimpleCriterionTrigger;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -16,10 +16,10 @@ import java.util.Optional;
  */
 public class DesignsCollectedTrigger extends SimpleCriterionTrigger<DesignsCollectedTrigger.TriggerInstance> {
 
-    public record TriggerInstance(Optional<ContextAwarePredicate> player, Optional<Integer> count, boolean all)
+    public record TriggerInstance(Optional<Holder<LootItemCondition>> player, Optional<Integer> count, boolean all)
             implements SimpleCriterionTrigger.SimpleInstance {
         public static final Codec<TriggerInstance> CODEC = RecordCodecBuilder.create(i -> i.group(
-                EntityPredicate.ADVANCEMENT_CODEC.optionalFieldOf("player").forGetter(TriggerInstance::player),
+                LootItemCondition.CODEC.optionalFieldOf("player").forGetter(TriggerInstance::player),
                 Codec.INT.optionalFieldOf("count").forGetter(TriggerInstance::count),
                 Codec.BOOL.optionalFieldOf("all", false).forGetter(TriggerInstance::all)
         ).apply(i, TriggerInstance::new));

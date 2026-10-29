@@ -7,7 +7,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.InputConstants;
-import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -2021,16 +2020,16 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         int n = Math.min(shards.size(), 8);
         for (int k = 0; k < n; k++) {
             if (!inBox(mx, my, leftPos + COLOR_STRIP_X + k * COLOR_CELL, y, COLOR_ICON, COLOR_ICON)) continue;
-            if (button == 0 && hasShiftDown() && selectedColorIdx >= 0 && selectedColorIdx != k
+            if (button == InputConstants.MOUSE_BUTTON_LEFT && hasShiftDown() && selectedColorIdx >= 0 && selectedColorIdx != k
                     && selectedColorIdx < shards.size()) { // shift-left-click another shard: swap the two colours
                 Collections.swap(shards, selectedColorIdx, k);
                 selectedColorIdx = k; // selection follows the colour we moved
                 closeHex();
-            } else if (button == 1 && selectedColorIdx == k) { // right-click the SELECTED shard: delete it (select first)
+            } else if (button == InputConstants.MOUSE_BUTTON_RIGHT && selectedColorIdx == k) { // right-click the SELECTED shard: delete it (select first)
                 shards.remove(k);
                 selectedColorIdx = -1;
                 closeHex();
-            } else if (button != 1 && selectedColorIdx == k) { // left re-click the selected shard
+            } else if (button != InputConstants.MOUSE_BUTTON_RIGHT && selectedColorIdx == k) { // left re-click the selected shard
                 // A rainbow/custom shard toggles the hex entry box; a normal shard does nothing (no unselect).
                 if (isCustomShard(shards.get(k))) { if (hexOpen) closeHex(); else openHex(k); }
             } else {                                 // any click on an unselected shard selects it, never unselects
@@ -2041,7 +2040,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         }
         // "+" box: add a new unset shard, selected (hidden while editing hex).
         if (n < 8 && !hexOpen && inBox(mx, my, leftPos + COLOR_STRIP_X + n * COLOR_CELL, y, COLOR_ICON, COLOR_ICON)) {
-            if (button == 0) { shards.add(new ArrayList<>()); selectedColorIdx = n; closeHex(); }
+            if (button == InputConstants.MOUSE_BUTTON_LEFT) { shards.add(new ArrayList<>()); selectedColorIdx = n; closeHex(); }
             return true;
         }
         return false;
@@ -2527,7 +2526,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
 
         @Override
         protected boolean isValidClickButton(MouseButtonInfo info) {
-            return info.button() == 0 || (rightToo && info.button() == 1);
+            return info.button() == InputConstants.MOUSE_BUTTON_LEFT || (rightToo && info.button() == InputConstants.MOUSE_BUTTON_RIGHT);
         }
 
         @Override
@@ -2554,7 +2553,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
 
         addRenderableWidget(new BevelButton(leftPos + SKIN_BTN_X, topPos + SKIN_BTN_Y, SKIN_BTN_W, SKIN_BTN_H, 2, true,
                 () -> Component.translatable("screen.customglint.skin." + skin.name.toLowerCase(Locale.ROOT)).getString(),
-                () -> LABEL_HDR, () -> GUI_FACE, b -> cycleSkin(b == 1 ? -1 : 1)));
+                () -> LABEL_HDR, () -> GUI_FACE, b -> cycleSkin(b == InputConstants.MOUSE_BUTTON_RIGHT ? -1 : 1)));
 
         addRenderableWidget(new BevelButton(sndBtnX(), topPos + SKIN_BTN_Y, SND_BTN_W, SKIN_BTN_H, 2, false,
                 () -> "♪", () -> GlintClientConfig.glintTableSound() ? COST_OK : COST_BAD, () -> GUI_FACE,
@@ -2564,7 +2563,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         // Import); right-click saves the current preview build to a config file so it can be imported later.
         // Sits to the left of the sound toggle.
         addRenderableWidget(new BevelButton(impBtnX(), topPos + SKIN_BTN_Y, IMP_BTN_W, SKIN_BTN_H, 2, true,
-                () -> "↓", () -> LABEL_HDR, () -> GUI_FACE, b -> { if (b == 1) saveCurrentAsImport(); else toggleImportPicker(); }));
+                () -> "↓", () -> LABEL_HDR, () -> GUI_FACE, b -> { if (b == InputConstants.MOUSE_BUTTON_RIGHT) saveCurrentAsImport(); else toggleImportPicker(); }));
 
         printBtn = addRenderableWidget(new BevelButton(leftPos + PRINT_X, topPos + PRINT_Y, PRINT_W, PRINT_H, 3, false,
                 () -> label("print"), () -> canPrint() ? LABEL_HDR : COST_BAD, () -> canPrint() ? GUI_FACE : BTN_DISABLED,
@@ -2591,7 +2590,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         // colour strip (right-click again unfocuses). Forcing Manual on a focus right-click saves a click.
         glowModeBtn = addRenderableWidget(new BevelButton(leftPos + GLOW_MODE_X, topPos + GLOW_MODE_Y, GLOW_MODE_W, GLOW_MODE_H, 2, true,
                 this::glowModeLabel, this::glowModeColor, () -> glowFocused ? BTN_HOVER : GUI_FACE, b -> {
-                    if (b == 1) {
+                    if (b == InputConstants.MOUSE_BUTTON_RIGHT) {
                         if (glowFocused) glowFocused = false;
                         else { glowAuto = false; glowFocused = true; selectedColorIdx = glowShards.isEmpty() ? -1 : 0; }
                     } else {
@@ -2935,7 +2934,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
 
         // Right-click the main slot clears the whole working trim; right-click the merge slot clears it. Any
         // physical trim in the slot is shift-moved back to the inventory first so it isn't lost.
-        if (event.button() == 1 && menu.getCarried().isEmpty()) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT && menu.getCarried().isEmpty()) {
             if (overSlot(mx, my, GlintTableMenu.SLOT_TRIM)) {
                 if (menu.slots.get(GlintTableMenu.SLOT_TRIM).hasItem()) quickMoveSlot(GlintTableMenu.SLOT_TRIM);
                 clearBuild();
@@ -2979,7 +2978,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         // Rainbow dye in the glow / name colour slot → right-click toggles its custom-hex picker (instead of
         // the vanilla slot pickup), so you can type any hex for the glow ring / item name colour. Right-clicking
         // the same slot again closes the box (mirrors the custom-shard toggle).
-        if (event.button() == 1) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             if (menu.showGlowDye && rainbowInSlot(GlintTableMenu.SLOT_GLOW_DYE) && overSlot(mx, my, GlintTableMenu.SLOT_GLOW_DYE)) {
                 if (hexOpen && hexMode == HEX_GLOW) closeHex(); else openHexColor(HEX_GLOW);
                 return true;
@@ -2996,9 +2995,9 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         for (Chip c : layerChips()) {
             if (!inBox(mx, my, x + c.x(), cy, LAYER_ICON, LAYER_ICON)) continue;
             glowFocused = false; // touching the layer strip returns the colour strip to the active layer
-            if (c.kind() == 3) { if (event.button() == 0) addLayer(); }         // [+] add chip
-            else if (c.kind() == 1) { if (event.button() == 1) removeActiveLayer(); } // selected layer: right-click deletes
-            else if (event.button() == 0 && hasShiftDown()) swapLayers(c.kind(), c.index()); // shift-left: swap with the active layer
+            if (c.kind() == 3) { if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) addLayer(); }         // [+] add chip
+            else if (c.kind() == 1) { if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) removeActiveLayer(); } // selected layer: right-click deletes
+            else if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hasShiftDown()) swapLayers(c.kind(), c.index()); // shift-left: swap with the active layer
             else editLayer(c.kind(), c.index());                                 // unselected: any click selects it first
             return true;
         }
@@ -3011,7 +3010,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         // hold the dye, each slot maps to a fixed dye shade, so you can pick any colour to design with even
         // without owning it; the missing dye is added to the print cost (shown in the Print tooltip). Fully
         // consumed so vanilla never grabs/moves the dye stack; left-click is still vanilla pickup.
-        if (event.button() == 1) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             List<List<Integer>> editing = editShards();
             boolean shardSel = selectedColorIdx >= 0 && selectedColorIdx < editing.size();
             for (int i = 0; i < 16; i++) {
@@ -3039,7 +3038,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         }
 
         // Grid scrollbars, left-click or drag the thumb to scroll (matches the creative inventory).
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             if (onScrollbar(mx, my, x + LGRID_X, y + GRID_Y, trims.size())) {
                 draggingGrid = 0;
                 gridScroll = scrollFromMouse(my, y + GRID_Y, trims.size());
@@ -3057,12 +3056,12 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
         if (li >= 0) {
             String name = trims.get(li);
             // Shift-left-click pulls a free blank copy of an owned design into the inventory.
-            if (event.button() == 0 && hasShiftDown()) {
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hasShiftDown()) {
                 if (GlintStoredSyncPacket.CLIENT_STORED.contains(name))
                     ClientPacketDistributor.sendToServer(new GlintGiveDesignPacket(name));
                 return true;
             }
-            if (event.button() == 1) {
+            if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
                 if (glowMainSelected()) return true; // a Glow Trim can't merge, so ignore the right-click donor pick
                 boolean same = !selectedDonorPrinted && name.equals(trimDesignName(selectedDonor));
                 selectedDonor = same ? ItemStack.EMPTY : trimCache.getOrDefault(name, ItemStack.EMPTY).copy();
@@ -3084,7 +3083,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
             // Shift-left-click pulls a real trim out of the library into the inventory (no-op if it's full).
             // An imported-but-not-yet-crafted trim is dimmed and locked; shift-clicking it instead deletes it
             // from the library.
-            if (event.button() == 0 && hasShiftDown()) {
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hasShiftDown()) {
                 if (isImportLocked(GlintPrintedSyncPacket.CLIENT_PRINTED.get(ri)))
                     ClientPacketDistributor.sendToServer(new GlintDeletePrintedPacket(ri));
                 else
@@ -3092,7 +3091,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
                 return true;
             }
             ItemStack picked = GlintPrintedSyncPacket.CLIENT_PRINTED.get(ri).copy();
-            if (event.button() == 1) {
+            if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
                 if (glowMainSelected()) return true; // a Glow Trim can't merge, so ignore the right-click donor pick
                 boolean same = selectedDonorPrinted && ItemStack.isSameItemSameComponents(picked, selectedDonor);
                 selectedDonor = same ? ItemStack.EMPTY : picked;
@@ -3149,7 +3148,7 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
     public boolean keyPressed(KeyEvent event) {
         // Import picker: Escape or Enter closes it; other keys type into the search box.
         if (showImportPicker) {
-            if (event.key() == 256 || event.key() == 257 || event.key() == 335) {
+            if (event.isEscape() || event.isConfirmation()) {
                 showImportPicker = false;
                 if (importSearchBox != null) importSearchBox.setFocused(false);
                 return true;
@@ -3160,18 +3159,18 @@ public class GlintTableScreen extends AbstractContainerScreen<GlintTableMenu> {
             if (importSearchBox != null) { importSearchBox.setFocused(true); importSearchBox.keyPressed(event); return true; }
         }
         // Enter closes whichever text box is being edited (mirrors the right-click-to-close toggle on the slots).
-        if (event.key() == 257 || event.key() == 335) { // Return / numpad Enter
+        if (event.isConfirmation()) { // Return / numpad Enter
             if (hexOpen) { closeHex(); setFocused(null); return true; }
             if (nameBox != null && nameBox.isFocused()) { nameBox.setFocused(false); setFocused(null); return true; }
         }
         // Hex box: gate on hexOpen (its authoritative state flag) + force focus. Its A-F digits include the
         // default inventory key (E), which would otherwise close the screen instead of entering the digit.
-        if (hexOpen && hexBox != null && event.key() != 256) {
+        if (hexOpen && hexBox != null && !event.isEscape()) {
             hexBox.setFocused(true);
             hexBox.keyPressed(event);
             return true;
         }
-        if (nameBox != null && nameBox.isVisible() && nameBox.isFocused() && event.key() != 256) {
+        if (nameBox != null && nameBox.isVisible() && nameBox.isFocused() && !event.isEscape()) {
             nameBox.keyPressed(event);
             return true; // swallow typing (incl. the inventory key) while editing the name
         }

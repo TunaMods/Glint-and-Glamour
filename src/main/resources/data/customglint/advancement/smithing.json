@@ -33,7 +33,7 @@
     "smith": {
       "trigger": "minecraft:recipe_crafted",
       "conditions": {
-        "recipe_id": "customglint:glint_trim_smithing"
+        "recipes": "customglint:glint_trim_smithing"
       }
     }
   },

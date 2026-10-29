@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Custom Glints GUI item-glint fragment shader. Emits the scrolling glint over a glinted item's cached
 // icon, masked to the item silhouette (Sampler0 = the cached atlas slot, Sampler1 = the grayscale design).
@@ -6,36 +7,23 @@
 // after the icon's sorted element in the same node). Drawn with BlendFunction.GLINT, exactly like the
 // world/in-hand glint, so the look matches.
 
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
-// Globals carries GlintAlpha, the vanilla glint-strength dimmer. Inlined (startup core shaders can't
-// moj_import); bound for GUI draws by RenderSystem.bindDefaultUniforms, same as the world glint.
-layout(std140) uniform Globals {
-    ivec3 CameraBlockPos;
-    vec3 CameraOffset;
-    vec2 ScreenSize;
-    float GlintAlpha;
-    float GameTime;
-    int MenuBlurRadius;
-    int UseRgss;
-};
+#include <minecraft:dynamictransforms.glsl>
+// Globals carries GlintAlpha, the vanilla glint-strength dimmer; bound for GUI draws by
+// RenderSystem.bindDefaultUniforms, same as the world glint.
+#include <minecraft:globals.glsl>
 
 uniform sampler2D Sampler0;   // cached item slot, the silhouette mask
 uniform sampler2D Sampler1;   // grayscale glint design: single design (REPEAT), or the shared atlas (CLAMP)
 
-in vec2 texCoord0;
-in vec4 vertexColor;
-in float vGuiScale;
-in vec2 vScroll;   // 2D scroll vector (design-UV), direction+speed/static already resolved CPU-side
-in float vPS;
-in float vAtlasMode; // 1 = Sampler1 is the shared design atlas; 0 = a single REPEAT design texture
-in float vCellIndex; // atlas cell for this design when vAtlasMode == 1
+layout(location = 0) in vec2 texCoord0;
+layout(location = 1) in vec4 vertexColor;
+layout(location = 2) in float vGuiScale;
+layout(location = 3) in vec2 vScroll;   // 2D scroll vector (design-UV), direction+speed/static already resolved CPU-side
+layout(location = 4) in float vPS;
+layout(location = 5) in float vAtlasMode; // 1 = Sampler1 is the shared design atlas; 0 = a single REPEAT design texture
+layout(location = 6) in float vCellIndex; // atlas cell for this design when vAtlasMode == 1
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // Shared GUI design atlas layout — MUST match CustomGlintRenderer.GUI_ATLAS_* constants. Designs pack into a
 // square grid of 64px cells, each with a GUTTER-px wrapped border so fract() tiling stays seamless under

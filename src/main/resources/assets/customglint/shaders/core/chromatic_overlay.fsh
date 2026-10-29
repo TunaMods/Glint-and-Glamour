@@ -1,9 +1,10 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:globals.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:globals.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
 
 // Custom Glints PROCEDURAL CHROMATIC overlay fragment shader, the post-Iris counterpart of
 // core/chromatic.fsh. Identical oil-slick synthesis, but the model is re-rendered AFTER Iris finishes
@@ -18,18 +19,18 @@ uniform sampler2D Sampler0;     // the model texture (elytra/armor/entity); driv
 uniform sampler2D Sampler1;     // palette strip: 1px tall, one texel per colour
 uniform sampler2D DepthSampler; // full-res scene depth (main target)
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec2 noiseCoord;
-in vec2 texCoord0;
-in vec4 vertexColor;
-in float vSeed;
-in float vMorph;
-in float vCount;
-in float viewDist;
-in vec4 screenPos;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec2 noiseCoord;
+layout(location = 3) in vec2 texCoord0;
+layout(location = 4) in vec4 vertexColor;
+layout(location = 5) in float vSeed;
+layout(location = 6) in float vMorph;
+layout(location = 7) in float vCount;
+layout(location = 8) in float viewDist;
+layout(location = 9) in vec4 screenPos;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 const float DENSITY = 14.0; // noise cells across one UV unit — global chromatic fineness knob (keep in sync
                             // with chromatic/chromatic_block/gui_chromatic so armor/item/GUI match)
@@ -92,12 +93,14 @@ vec3 cgChroma(int n, float n1, float n2, float t) {
 }
 
 // Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
-// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
-// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
-// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
-// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix (reversed-Z included); only the
+// depth -> ndc step depends on the clip depth range, which the shader compiler reports.
 float eyeDist(float windowDepth) {
-    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+#ifdef RENDERPEARL_DEPTH_IS_ZERO_TO_ONE
+    float ndc = windowDepth;
+#else
+    float ndc = windowDepth * 2.0 - 1.0;
+#endif
     return ProjMat[3][2] / (ndc + ProjMat[2][2]);
 }
 

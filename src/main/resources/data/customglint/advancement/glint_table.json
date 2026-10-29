@@ -19,7 +19,7 @@
     "craft_table": {
       "trigger": "minecraft:recipe_crafted",
       "conditions": {
-        "recipe_id": "customglint:glint_table"
+        "recipes": "customglint:glint_table"
       }
     }
   },

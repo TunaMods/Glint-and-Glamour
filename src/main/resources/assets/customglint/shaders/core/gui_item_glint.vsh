@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Custom Glints GUI item-glint vertex shader. Draws the animated glint LIVE over a glinted item's
 // cached atlas icon, so the base icon can stay cached (not re-baked every frame) while the glint still
@@ -9,31 +10,22 @@
 // in-hand glint exactly), UV2 = packed (patternScale, guiScale). UV0 = the atlas slot coords (used both
 // to sample the silhouette mask and to reconstruct item-local coords). Color = the animated layer colour.
 
-// DynamicTransforms + Projection inlined (mirrors vanilla core/position_tex_color.vsh; startup core
-// shaders can't moj_import).
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
-layout(std140) uniform Projection {
-    mat4 ProjMat;
-};
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
 
-in vec3 Position;
-in vec2 UV0;
-in ivec2 UV1;
-in ivec2 UV2;
-in vec4 Color;
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec2 UV0;
+layout(location = 2) in ivec2 UV1;
+layout(location = 3) in ivec2 UV2;
+layout(location = 4) in vec4 Color;
 
-out vec2 texCoord0;
-out vec4 vertexColor;
-out float vGuiScale;
-out vec2 vScroll;
-out float vPS;
-out float vAtlasMode;   // 1 = Sampler1 is the shared design atlas (sample cell vCellIndex); 0 = single design
-out float vCellIndex;   // atlas cell index for this layer's design (only meaningful when vAtlasMode == 1)
+layout(location = 0) out vec2 texCoord0;
+layout(location = 1) out vec4 vertexColor;
+layout(location = 2) out float vGuiScale;
+layout(location = 3) out vec2 vScroll;
+layout(location = 4) out float vPS;
+layout(location = 5) out float vAtlasMode;   // 1 = Sampler1 is the shared design atlas (sample cell vCellIndex); 0 = single design
+layout(location = 6) out float vCellIndex;   // atlas cell index for this layer's design (only meaningful when vAtlasMode == 1)
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);

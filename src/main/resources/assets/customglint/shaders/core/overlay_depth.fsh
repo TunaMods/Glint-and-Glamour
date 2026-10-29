@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Custom Glints wing depth PRE-PASS fragment shader. Writes ONLY depth: the colour output vec4(0.0) is a
 // no-op under the inherited GLINT blend (0² + dst = dst). The model texture's alpha is the wing cutout, so a
@@ -10,9 +11,9 @@
 
 uniform sampler2D Sampler0;   // model texture; its alpha is the wing cutout silhouette
 
-in vec2 texCoord0;
+layout(location = 0) in vec2 texCoord0;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     if (texture(Sampler0, texCoord0).a < 0.1) {

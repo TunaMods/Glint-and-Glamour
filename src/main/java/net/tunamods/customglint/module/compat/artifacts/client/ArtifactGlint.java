@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.tunamods.customglint.common.CustomGlint;
+import net.tunamods.customglint.common.client.GlintFeatureRenderer;
 import net.tunamods.customglint.common.client.CustomGlintRenderer;
 import net.tunamods.customglint.common.client.EntityGlintRender;
 
@@ -133,6 +134,6 @@ public final class ArtifactGlint {
     private static void submit(SubmitNodeCollector collector, Model model, Object state, PoseStack pose,
             RenderType rt, int light, int argb) {
         int color = (argb >>> 24) == 0 ? (argb | 0xFF000000) : argb;
-        collector.submitModel(model, state, pose, rt, light, OverlayTexture.NO_OVERLAY, color, null, 0, null);
+        GlintFeatureRenderer.submitModel(collector, model, state, pose, rt, light, OverlayTexture.NO_OVERLAY, color);
     }
 }

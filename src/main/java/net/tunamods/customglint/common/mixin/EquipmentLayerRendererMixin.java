@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.client.ClientHooks;
 import net.tunamods.customglint.common.CustomGlint;
+import net.tunamods.customglint.common.client.GlintFeatureRenderer;
 import net.tunamods.customglint.common.client.CustomGlintRenderer;
 import net.tunamods.customglint.common.client.EntityGlintRender;
 import org.spongepowered.asm.mixin.Mixin;
@@ -132,7 +133,7 @@ public class EquipmentLayerRendererMixin {
         }
 
         // Glow outline, independent of the glint (a Glow-Trimmed armor piece with no glint still
-        // outlines). Queued for the AfterWeather drain (the same mask + composite as entities).
+        // outlines). Queued for the after-main-pass drain (the same mask + composite as entities).
         // The first layer's texture drives the silhouette alpha-discard so the ring follows the real
         // armor shape; the model + state are re-posed via setupAnim at drain (matching the armor body
         // draw), so multi-wearer scenes don't share a stale pose. Covers humanoid armor, elytra/capes
@@ -165,7 +166,6 @@ public class EquipmentLayerRendererMixin {
     private static void cg_submit(SubmitNodeCollector collector, Model model, Object state, PoseStack poseStack,
             RenderType rt, int lightCoords, int argb) {
         int color = (argb >>> 24) == 0 ? (argb | 0xFF000000) : argb;
-        collector.submitModel(model, state, poseStack, rt, lightCoords, OverlayTexture.NO_OVERLAY,
-                color, null, 0, null);
+        GlintFeatureRenderer.submitModel(collector, model, state, poseStack, rt, lightCoords, OverlayTexture.NO_OVERLAY, color);
     }
 }

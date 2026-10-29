@@ -1,8 +1,9 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
 
 // Custom Glints PROCEDURAL CHROMATIC vertex shader. Same skeleton as core/glint_color.vsh, but the
 // chromatic design has no texture: the fragment shader synthesises an oil-slick from value-noise.
@@ -13,17 +14,17 @@
 //   TextureMat[2][1] = colour count    (0 => rainbow fallback; 1..8 => palette texels)
 // The 2D part of TextureMat still scales/positions the noise UV exactly like the normal glint.
 
-in vec3 Position;
-in vec2 UV0;
-in vec4 Color;
+layout(location = 0) in vec3 Position;
+layout(location = 1) in vec2 UV0;
+layout(location = 2) in vec4 Color;
 
-out float sphericalVertexDistance;
-out float cylindricalVertexDistance;
-out vec2 noiseCoord;
-out vec4 vertexColor;
-out float vSeed;
-out float vMorph;
-out float vCount;
+layout(location = 0) out float sphericalVertexDistance;
+layout(location = 1) out float cylindricalVertexDistance;
+layout(location = 2) out vec2 noiseCoord;
+layout(location = 3) out vec4 vertexColor;
+layout(location = 4) out float vSeed;
+layout(location = 5) out float vMorph;
+layout(location = 6) out float vCount;
 
 void main() {
     gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);

@@ -7,8 +7,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.SlotItemHandler;
+import net.tunamods.customglint.module.item.BagContainer;
 import net.tunamods.customglint.module.item.GlintBagItem;
 
 /**
@@ -20,7 +19,7 @@ public class GlintBagMenu extends AbstractContainerMenu {
 
     private final Player player;
     private final ItemStack bag;
-    private final IItemHandler handler;
+    private final BagContainer handler;
 
     /** Client constructor; the hand is sent as a boolean in the open packet. */
     public GlintBagMenu(int containerId, Inventory inventory, RegistryFriendlyByteBuf extraData) {
@@ -31,7 +30,7 @@ public class GlintBagMenu extends AbstractContainerMenu {
         super(ModMenuTypes.GLINT_BAG_MENU.get(), containerId);
         this.player = inventory.player;
         this.bag = player.getItemInHand(hand);
-        this.handler = GlintBagItem.createHandler(bag);
+        this.handler = GlintBagItem.contents(bag);
 
         // The player-inventory slot the bag lives in. Off-hand isn't shown in this menu, so it can't be moved
         // anyway; only a hotbar/main-inventory bag needs locking.
@@ -40,7 +39,7 @@ public class GlintBagMenu extends AbstractContainerMenu {
         // Bag grid (6×9), laid out like a large chest.
         for (int row = 0; row < GlintBagItem.ROWS; row++)
             for (int col = 0; col < GlintBagItem.COLS; col++)
-                addSlot(new SlotItemHandler(handler, col + row * GlintBagItem.COLS, 8 + col * 18, 18 + row * 18));
+                addSlot(bagSlot(handler, col + row * GlintBagItem.COLS, 8 + col * 18, 18 + row * 18));
 
         // Player inventory, positioned to match minecraft's generic_54 background.
         int invY = 18 + GlintBagItem.ROWS * 18 + 13; // +13: gap between the bag grid and player inventory
@@ -51,6 +50,16 @@ public class GlintBagMenu extends AbstractContainerMenu {
             }
         for (int col = 0; col < 9; col++)
             addSlot(lockableSlot(inventory, col, 8 + col * 18, invY + 58, col == lockedIndex));
+    }
+
+    /** A bag grid slot. Vanilla {@link Slot#mayPlace} accepts anything, so it defers to the bag's filter. */
+    private static Slot bagSlot(BagContainer bag, int index, int x, int y) {
+        return new Slot(bag, index, x, y) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return bag.canPlaceItem(index, stack);
+            }
+        };
     }
 
     private static Slot lockableSlot(Inventory inv, int index, int x, int y, boolean locked) {
