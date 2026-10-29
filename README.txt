@@ -42,12 +42,12 @@ In build.gradle:
     }
 
     dependencies {
-        compileOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.8.0")
-        runtimeOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.8.0")
+        compileOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.9.0")
+        runtimeOnly fg.deobf("net.tunamods.customglint:glint-and-glamour-api:1.9.0")
 
         jarJar(group: 'net.tunamods.customglint', name: 'glint-and-glamour-api',
-               version: '[1.8.0,2.0)') {
-            jarJar.ranged(it, '[1.8.0,2.0)')
+               version: '[1.9.0,2.0)') {
+            jarJar.ranged(it, '[1.9.0,2.0)')
         }
     }
 
