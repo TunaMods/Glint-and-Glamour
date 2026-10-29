@@ -326,7 +326,8 @@ public final class GlintPipelines {
      *  split, so the overlay drain first primes the isolated depth with the nearest surface ({@link
      *  #WING_DEPTH}) and this LEQUAL keeps only that one per pixel instead of additively doubling the seam.
      *  (World occlusion is still the fragment shader's DepthSampler test.) Cull stays OFF, see the mirrored-
-     *  wing note on {@link #CHROMATIC_OVERLAY_WING}. */
+     *  wing note on {@link #CHROMATIC_OVERLAY_WING}. Quad items use it too, so a 3D item (a backpack) hides
+     *  its own far faces, which the scene-depth test can't under Iris's squashed hand depth. */
     public static final RenderPipeline GLINT_OVERLAY_WING = GLINT_OVERLAY.toBuilder()
             .withLocation(CustomGlint.res("pipeline/glint_overlay_wing"))
             .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
