@@ -6,6 +6,7 @@ import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.Model;
@@ -26,9 +27,11 @@ import net.tunamods.customglint.common.CustomGlintComponents;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.joml.Vector4fc;
+import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -373,6 +376,7 @@ public final class EntityGlintRender {
     public static void queueArmorOutline(Model model, Object state,
             PoseStack.Pose pose, Identifier texture, int light, @Nullable CustomGlint.Data glint,
             boolean glowing, int[] glowColors, float glowSpeed, boolean glowInterp, boolean ownRing) {
+        if (!pose.pose().isFinite()) return;
         if (model == null || state == null || texture == null || pose == null) return;
         if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate ring
         if (!GlintClientConfig.entityOutlines() || beyondOutlineDistance(pose)) return;
@@ -400,6 +404,7 @@ public final class EntityGlintRender {
     public static void queueSpecialModelOutline(Model model, Object state,
             PoseStack.Pose pose, int light, @Nullable CustomGlint.Data glint, boolean glowing, int[] glowColors,
             float glowSpeed, boolean glowInterp) {
+        if (!pose.pose().isFinite()) return;
         if (model == null || state == null || pose == null) return;
         if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate ring
         if (!GlintClientConfig.itemOutlines() || beyondOutlineDistance(pose)) return;
@@ -431,6 +436,7 @@ public final class EntityGlintRender {
     public static void queueItemOutline(List<BakedQuad> quads, PoseStack.Pose pose, int light,
             @Nullable CustomGlint.Data glint, boolean glowing, int[] glowColors, float glowSpeed, boolean glowInterp,
             boolean heldFirstPerson) {
+        if (!pose.pose().isFinite()) return;
         if (quads == null || quads.isEmpty() || pose == null) return;
         if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate ring
         if (!GlintClientConfig.itemOutlines() || beyondOutlineDistance(pose)) return;
@@ -552,6 +558,7 @@ public final class EntityGlintRender {
     @SuppressWarnings("rawtypes")
     public static void queueChromaticModel(Model model, Object state, PoseStack.Pose pose, RenderType rt, int light,
                                            boolean heldFirstPerson) {
+        if (!pose.pose().isFinite()) return;
         queueGlintOverlayModel(model, state, pose, rt, light, 0xFFFFFFFF, heldFirstPerson, null);
     }
 
@@ -560,6 +567,7 @@ public final class EntityGlintRender {
     @SuppressWarnings("rawtypes")
     public static void queueChromaticModel(Model model, Object state, PoseStack.Pose pose, RenderType rt, int light,
                                            boolean heldFirstPerson, RenderType depthRt) {
+        if (!pose.pose().isFinite()) return;
         queueGlintOverlayModel(model, state, pose, rt, light, 0xFFFFFFFF, heldFirstPerson, depthRt);
     }
 
@@ -568,6 +576,7 @@ public final class EntityGlintRender {
      *  first-person hand item to the hand-projection drain instead of the world drain. */
     public static void queueChromaticItem(List<BakedQuad> quads, PoseStack.Pose pose, CustomGlint.Data glint,
                                           int layerIdx, int light, boolean heldFirstPerson) {
+        if (!pose.pose().isFinite()) return;
         // Chromatic: colorIdx/color are unused at drain (the drain resolves the procedural RT + white).
         queueGlintOverlayItem(quads, pose, glint, layerIdx, 0, 0xFFFFFFFF, light, heldFirstPerson);
     }
@@ -584,6 +593,7 @@ public final class EntityGlintRender {
      *  animated colour, drawn onto the model's vertices by the overlay shader. */
     public static void queueGlintOverlayModel(Model model, Object state, PoseStack.Pose pose, RenderType rt, int light,
                                               int color, boolean heldFirstPerson) {
+        if (!pose.pose().isFinite()) return;
         queueGlintOverlayModel(model, state, pose, rt, light, color, heldFirstPerson, null);
     }
 
@@ -593,6 +603,7 @@ public final class EntityGlintRender {
     @SuppressWarnings("rawtypes")
     public static void queueGlintOverlayModel(Model model, Object state, PoseStack.Pose pose, RenderType rt, int light,
                                               int color, boolean heldFirstPerson, RenderType depthRt) {
+        if (!pose.pose().isFinite()) return;
         if (model == null || state == null || pose == null || rt == null) return;
         if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate overlay
         ChromaModelJob job = new ChromaModelJob(model, state, pose.copy(), rt, light, color, depthRt);
@@ -604,6 +615,7 @@ public final class EntityGlintRender {
      *  per quad and tints it with {@code color}. */
     public static void queueGlintOverlayItem(List<BakedQuad> quads, PoseStack.Pose pose, CustomGlint.Data glint,
                                              int layerIdx, int colorIdx, int color, int light, boolean heldFirstPerson) {
+        if (!pose.pose().isFinite()) return;
         if (quads == null || quads.isEmpty() || pose == null || glint == null) return;
         if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate overlay
         ChromaItemJob job = new ChromaItemJob(quads, pose.copy(), light, glint, layerIdx, colorIdx, color);
@@ -620,6 +632,10 @@ public final class EntityGlintRender {
      * queues it owns.
      */
     public static void drainChromaticOverlays(boolean firstPerson) {
+        guarded("drainChromaticOverlays", () -> drainChromaticOverlaysUnguarded(firstPerson));
+    }
+
+    private static void drainChromaticOverlaysUnguarded(boolean firstPerson) {
         List<ChromaModelJob> modelJobs = firstPerson ? HELD_FP_CHROMA_MODELS : CHROMA_MODELS;
         List<ChromaItemJob> itemJobs = firstPerson ? HELD_FP_CHROMA_ITEMS : CHROMA_ITEMS;
         if (modelJobs.isEmpty() && itemJobs.isEmpty()) return;
@@ -735,6 +751,10 @@ public final class EntityGlintRender {
      *     is in view space (not camera-relative world space), so the world projection wouldn't line up.
      */
     public static void drainBodyOutlines(boolean allowScissor) {
+        guarded("drainBodyOutlines", () -> drainBodyOutlinesUnguarded(allowScissor));
+    }
+
+    private static void drainBodyOutlinesUnguarded(boolean allowScissor) {
         boolean hasBodyGlow = allowScissor && CustomGlintRenderer.hasBodyGlow();
         // World drain (allowScissor) composites dropped/3rd-person items + worn armor; the hand drain
         // composites the first-person held item(s) only, their hand-local pose can't be projected with
@@ -1175,6 +1195,7 @@ public final class EntityGlintRender {
     @SuppressWarnings("rawtypes")
     public static void queueTranslucentLayerGlint(EntityModel model, Object state, PoseStack.Pose pose,
                                                   CustomGlint.Data glint, int light) {
+        if (!pose.pose().isFinite()) return;
         if (model == null || state == null || pose == null || glint == null) return;
         if (CustomGlintRenderer.isInShadowPass()) return;
         TRANSLUCENT_LAYER_GLINTS.add(new TranslucentLayerJob(model, state, pose.copy(), glint, light));
@@ -1187,6 +1208,10 @@ public final class EntityGlintRender {
      * against THIS stable depth instead of the shell's re-sorted depth. Called from {@code CustomGlintClientInit}.
      */
     public static void captureSolidDepth() {
+        guarded("captureSolidDepth", EntityGlintRender::captureSolidDepthUnguarded);
+    }
+
+    private static void captureSolidDepthUnguarded() {
         Minecraft mc = Minecraft.getInstance();
         RenderTarget main = mc.gameRenderer.mainRenderTarget();
         if (main == null) return;
@@ -1209,6 +1234,10 @@ public final class EntityGlintRender {
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static void drainTranslucentLayerGlints() {
+        guarded("drainTranslucentLayerGlints", EntityGlintRender::drainTranslucentLayerGlintsUnguarded);
+    }
+
+    private static void drainTranslucentLayerGlintsUnguarded() {
         if (TRANSLUCENT_LAYER_GLINTS.isEmpty()) return;
         PoseStack scratch = new PoseStack();
         GlintBatch bs = CustomGlintRenderer.overlayBatch();
@@ -1247,6 +1276,26 @@ public final class EntityGlintRender {
         } finally {
             bs.discard(); // a job that threw leaves its vertices staged
             TRANSLUCENT_LAYER_GLINTS.clear();
+        }
+    }
+
+    // A broken pose from another mod (a NaN arm swing from extreme haste, a zero-scale render) or any other
+    // failure inside one of our drains must cost that frame's rings and overlays, never the game. Every public
+    // drain runs through here: the first failure per drain is logged with its stack, the frame's queued jobs
+    // are dropped, and the render-target overrides our drains set are cleared for whatever renders next.
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final Set<String> loggedFailures = new HashSet<>();
+
+    private static void guarded(String drain, Runnable body) {
+        try {
+            body.run();
+        } catch (RuntimeException e) {
+            if (loggedFailures.add(drain)) {
+                LOGGER.error("[customglint] {} failed; skipping glow and overlay drawing this frame", drain, e);
+            }
+            clearBodyOutlineQueue();
+            RenderSystem.outputColorTextureOverride = null;
+            RenderSystem.outputDepthTextureOverride = null;
         }
     }
 
