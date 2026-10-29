@@ -12,7 +12,6 @@
         { "name": "ProjA", "type": "float", "count": 1, "values": [ 1.0 ] },
         { "name": "ProjB", "type": "float", "count": 1, "values": [ 1.0 ] },
         { "name": "TargetId", "type": "int", "count": 1, "values": [ -1 ] },
-        { "name": "GuiMode", "type": "int", "count": 1, "values": [ 0 ] },
-        { "name": "SoloTarget", "type": "int", "count": 1, "values": [ 0 ] }
+        { "name": "GuiMode", "type": "int", "count": 1, "values": [ 0 ] }
     ]
 }

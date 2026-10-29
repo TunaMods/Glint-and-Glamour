@@ -40,14 +40,6 @@ uniform int TargetId;
 // SQUARE (Chebyshev) so corners stay crisp, and the opening guard is skipped (the GUI silhouette is clean,
 // and the guard would erode a thin ring). Kept off the world path so 3D items are unaffected.
 uniform int GuiMode;
-// 1 = this composite pass's target object is the ONLY silhouette within its scissor box (no other id's
-// texels can reach any pixel here; the drain sets it when the box overlaps no other object's box). That
-// lets a pixel INSIDE the target's own silhouette skip the whole kernel: a ring needs a DIFFERENT id within
-// reach and there is none, so an interior pixel can never ring. This is the deep-interior early-out, the
-// dominant cost when a single filled silhouette (a close entity) covers much of the screen, since every one
-// of its interior pixels would otherwise scan the full kernel only to discard. Pixel-identical output: the
-// ring band (empty pixels) and any different-id pixel still scan. 0 = boxes overlap → full scan everywhere.
-uniform int SoloTarget;
 
 in vec2 texCoord;
 
@@ -77,10 +69,11 @@ void main() {
     int vP = int(texture(Sampler0, ctr).a * 255.0 + 0.5);
     int keyP = vP >= 128 ? vP - 128 : vP;
 
-    // Deep-interior early-out: when the target is the only object in this scissor box, a pixel inside the
-    // target's own silhouette (same id) can never ring, so skip the kernel entirely. Placed before the
-    // ringDist sample so the discard path costs a single mask tap.
-    if (SoloTarget != 0 && keyP != 0 && (keyP & 31) == TargetId) { discard; }
+    // Interior early-out: a pixel inside the target's own silhouette can never ring. The kernel only takes
+    // target-id sources, and a source with this pixel's own id is skipped, so for a target-id pixel every tap
+    // is rejected whatever else overlaps the box. Skipping it here is pixel-identical and saves the whole
+    // kernel on the silhouette's interior. Placed before the ringDist sample so the discard costs one mask tap.
+    if (keyP != 0 && (keyP & 31) == TargetId) { discard; }
 
     float ringDist = cg_eyeDist(texture(Sampler1, ctr).r); // this pixel's own silhouette depth (or far)
 
