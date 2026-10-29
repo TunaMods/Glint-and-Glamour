@@ -1,3 +1,4 @@
 [1.9.0]
 
 - Ported to 26.3
+- A broken arm or item pose from another mod, such as very high Haste, can no longer crash the game through the glow outlines or the shader-pack glint overlays. If one fails, that frame skips them and the error is logged once
