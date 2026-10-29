@@ -50,6 +50,10 @@ public final class CustomGlintClientInit {
             event.registerPipeline(GlintPipelines.CHROMATIC_COMPOSITE_PIPE);
         });
 
+        // Every in-phase glint draws as a GlintFeatureRenderer node. Fired once per feature dispatcher (level,
+        // GUI item atlas, picture-in-picture), so each gets its own renderer.
+        NeoForge.EVENT_BUS.addListener(GlintFeatureRenderer::onRegister);
+
         // Entity glint attachment. The 26.1 entity render is decoupled from the entity by draw time
         // (LivingEntityRenderer.submit only sees a LivingEntityRenderState), so the glint must ride
         // the render state. This modifier runs after vanilla extraction for EVERY living renderer
@@ -87,46 +91,6 @@ public final class CustomGlintClientInit {
             // Resolve "is a shader pack active" once for this frame (reflective Iris probe, hit many times
             // per frame downstream); a pack can't toggle mid-frame.
             CustomGlintRenderer.refreshFrameShaderActive();
-        });
-
-        // Snapshot the STABLE opaque depth between the solid and translucent feature passes. Every opaque
-        // surface (terrain + solid entity bodies) has committed its depth, but no translucent shell has drawn
-        // yet. The stashed translucent-layer glints (slime outer shell) occlude against this snapshot, not the
-        // shell's per-frame re-sorted depth (the slime flicker). Gated so the depth copy only runs when there
-        // is actually a slime-shell glint to draw. Off the shader path only (under a pack the overlay owns it).
-        NeoForge.EVENT_BUS.addListener((RenderLevelStageEvent.AfterOpaqueFeatures event) -> {
-            if (!CustomGlintRenderer.isShaderPackActive() && EntityGlintRender.hasTranslucentLayerGlints()) {
-                EntityGlintRender.captureSolidDepth();
-            }
-        });
-
-        // Entity-body glow rings are queued during the entity submit(...) extraction (where the
-        // entity-local pose is in hand) and drained HERE, at AfterWeather, the last level stage. The
-        // composite writes straight to the main target's colour texture (raw GL, frame-graph pass aside),
-        // and under Fancy graphics the clouds and weather passes ALSO write to main, executing AFTER the
-        // "main" pass where the earlier stages fire. Draining at AfterTranslucentFeatures (inside the main
-        // pass) let clouds and rain paint over the ring; AfterWeather runs after both, so the ring stays on
-        // top of them. It's still later than the translucent glint (the reason the drain moved off
-        // AfterOpaqueFeatures: there the glint drew after the ring → the ring showed through it as a faded
-        // line). Occlusion is unaffected: the mask samples the OPAQUE scene depth, committed in the opaque
-        // phase and never overwritten by translucent draws, so the ring still hides behind solid world
-        // geometry. Under Fabulous graphics clouds/weather render to their own targets (combined later by
-        // the transparency post-chain), so our direct-to-main composite lands before that chain at either
-        // stage, no change there.
-        // Off the shader path this is the glow drain: raw GL straight onto the main target, after the
-        // cloud/weather passes (so the ring composites on top of them). Under an active Iris pack this
-        // point is mid-framegraph, where Iris hijacks our framebuffer into its gbuffer (black screen),
-        // there the drain is relocated to LevelRendererMixin (LevelRenderer.render TAIL, post-Iris). Skip here when
-        // a pack is active so the glow isn't drained twice.
-        NeoForge.EVENT_BUS.addListener((RenderLevelStageEvent.AfterWeather event) -> {
-            if (!CustomGlintRenderer.isShaderPackActive()) {
-                // Translucent-shell glints (slime) draw here, after EVERY translucent pass, so they land ON
-                // TOP of the shell instead of being washed out beneath a later-order shell. Their occlusion
-                // still reads the stable opaque-depth snapshot taken at AfterOpaqueFeatures. Before the
-                // glow ring so the ring composites on top of the glint, as for opaque entities.
-                EntityGlintRender.drainTranslucentLayerGlints();
-                EntityGlintRender.drainBodyOutlines();
-            }
         });
     }
 

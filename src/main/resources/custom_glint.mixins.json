@@ -11,6 +11,7 @@
     "GameRendererMixin",
     "GuiRendererMixin",
     "ItemInHandRendererMixin",
+    "ItemLayerRenderStateMixin",
     "ItemModelResolverMixin",
     "ItemRendererMixin",
     "ItemStackRenderStateMixin",

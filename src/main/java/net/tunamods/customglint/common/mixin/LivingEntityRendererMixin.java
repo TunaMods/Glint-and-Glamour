@@ -91,7 +91,7 @@ public class LivingEntityRendererMixin {
         }
 
         // Glow outline ring around the body silhouette. Instead of queuing a deferred re-pose + second
-        // setupAnim at AfterWeather, we stash the colour + texture on the render state here (where
+        // setupAnim after the main pass, we stash the colour + texture on the render state here (where
         // getTextureLocation is in hand). ModelFeatureRendererMixin reads it back at the body draw and
         // tees the silhouette IN-PHASE on the already-posed model, exactly how vanilla's own glowing-
         // entity outline works (SubmitNodeCollection.submitModel adds a second outline-phase node for it).

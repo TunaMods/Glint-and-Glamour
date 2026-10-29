@@ -1,6 +1,6 @@
 package net.tunamods.customglint.common.client;
 
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 

@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -454,7 +455,7 @@ public class GlintEditorScreen extends Screen {
         // Skin cycle (left-click next, right-click previous) + button-sound toggle, bottom of the left column.
         skinBtn = addRenderableWidget(new BevelButton(px + 8, py + 232, 62, 14, 3, true,
                 () -> Component.translatable("screen.customglint.skin." + skin.name.toLowerCase(Locale.ROOT)).getString(),
-                () -> skin.labelHdr, () -> skin.guiFace, b -> cycleSkin(b == 1 ? -1 : 1)));
+                () -> skin.labelHdr, () -> skin.guiFace, b -> cycleSkin(b == InputConstants.MOUSE_BUTTON_RIGHT ? -1 : 1)));
         soundBtn = addRenderableWidget(new BevelButton(px + 72, py + 232, 14, 14, 3, false,
                 () -> "♪", () -> GlintClientConfig.glintTableSound() ? skin.costOk : skin.costBad,
                 () -> skin.guiFace, b -> GlintClientConfig.setGlintTableSound(!GlintClientConfig.glintTableSound())));
@@ -926,7 +927,7 @@ public class GlintEditorScreen extends Screen {
 
         @Override
         protected boolean isValidClickButton(MouseButtonInfo info) {
-            return info.button() == 0 || (rightToo && info.button() == 1);
+            return info.button() == InputConstants.MOUSE_BUTTON_LEFT || (rightToo && info.button() == InputConstants.MOUSE_BUTTON_RIGHT);
         }
 
         @Override

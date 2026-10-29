@@ -1,6 +1,7 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:projection.glsl>
+#include <minecraft:projection.glsl>
 
 // Custom Glints glow-silhouette fragment shader, the SINGLE combined mask (replaces the old separate
 // FULL-shape + VISIBLE passes, which cost a second model render + a second emit per mob). One render of
@@ -24,12 +25,12 @@
 uniform sampler2D Sampler0;
 uniform sampler2D DepthSampler;
 
-in vec4 vertexColor;
-in vec2 texCoord0;
-in float viewDist;
-in vec4 screenPos;
+layout(location = 0) in vec4 vertexColor;
+layout(location = 1) in vec2 texCoord0;
+layout(location = 2) in float viewDist;
+layout(location = 3) in vec4 screenPos;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // Ring thickness is NOT decided here. Alpha carries visibility + object id only. The composite
 // (post/glow_outline_id) owns the per-category width, the distance thinning and the edge feather, where
@@ -55,12 +56,14 @@ const float MIN_BIAS = 0.015;
 const float SLOPE_BIAS = 1.5;
 
 // Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
-// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
-// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
-// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
-// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix (reversed-Z included); only the
+// depth -> ndc step depends on the clip depth range, which the shader compiler reports.
 float eyeDist(float windowDepth) {
-    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+#ifdef RENDERPEARL_DEPTH_IS_ZERO_TO_ONE
+    float ndc = windowDepth;
+#else
+    float ndc = windowDepth * 2.0 - 1.0;
+#endif
     return ProjMat[3][2] / (ndc + ProjMat[2][2]);
 }
 

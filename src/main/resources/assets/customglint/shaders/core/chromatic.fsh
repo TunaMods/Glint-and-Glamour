@@ -1,8 +1,9 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:globals.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:globals.glsl>
+#include <minecraft:dynamictransforms.glsl>
 
 // Custom Glints PROCEDURAL CHROMATIC fragment shader. Generates a flowing oil-slick from value-noise
 // fractal Brownian motion instead of sampling a design texture. Up to 8 independent noise FIELDS, one
@@ -13,15 +14,15 @@
 
 uniform sampler2D Sampler1; // palette strip: 1px tall, one texel per colour
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec2 noiseCoord;
-in vec4 vertexColor;
-in float vSeed;
-in float vMorph;
-in float vCount;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec2 noiseCoord;
+layout(location = 3) in vec4 vertexColor;
+layout(location = 4) in float vSeed;
+layout(location = 5) in float vMorph;
+layout(location = 6) in float vCount;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 const float DENSITY = 14.0; // noise cells across one UV unit — global chromatic fineness knob (keep in sync
                             // with chromatic_overlay/chromatic_block/gui_chromatic so armor/item/GUI match)

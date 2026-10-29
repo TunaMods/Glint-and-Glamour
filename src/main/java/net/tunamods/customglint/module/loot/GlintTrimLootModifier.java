@@ -4,6 +4,7 @@ import com.google.common.base.Suppliers;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.core.Holder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
@@ -17,6 +18,7 @@ import net.tunamods.customglint.module.item.ModItems;
 import net.tunamods.customglint.common.CustomGlint;
 import net.tunamods.customglint.module.item.GlintTrimItem;
 
+import java.util.Optional;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,15 +71,15 @@ public class GlintTrimLootModifier extends LootModifier {
         .flatMap(t -> t.weights().entrySet().stream())
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
-    protected GlintTrimLootModifier(LootItemCondition[] conditions, int priority) {
-        super(conditions, priority);
+    protected GlintTrimLootModifier(Optional<Holder<LootItemCondition>> condition, int priority) {
+        super(condition, priority);
     }
 
-    /** The biome id path the loot roll happened in. ORIGIN is optional in the loot context and getParameter
-     *  throws when it is absent, so an unpositioned roll falls back to plains weighting. */
+    /** The biome id path the loot roll happened in. ORIGIN is optional in the loot context, so an unpositioned
+     *  roll falls back to plains weighting. */
     private static String biomeName(LootContext context) {
-        if (!context.hasParameter(LootContextParams.ORIGIN)) return "plains";
-        var origin = context.getParameter(LootContextParams.ORIGIN);
+        var origin = context.getOptional(LootContextParams.ORIGIN);
+        if (origin == null) return "plains";
         var biome = context.getLevel().getBiome(new BlockPos((int) origin.x, (int) origin.y, (int) origin.z));
         return biome.unwrapKey().map(key -> key.identifier().getPath()).orElse("plains");
     }

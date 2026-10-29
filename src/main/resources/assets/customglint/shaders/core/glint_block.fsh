@@ -1,8 +1,9 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:globals.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:globals.glsl>
+#include <minecraft:dynamictransforms.glsl>
 
 // Custom Glints BLOCK glint fragment shader. Identical to glint_color.fsh except it first alpha-tests the
 // block texture (Sampler1) at the raw block UV and discards transparent texels, so the glint is masked to
@@ -12,13 +13,13 @@
 uniform sampler2D Sampler0; // grayscale glint design
 uniform sampler2D Sampler1; // block atlas (cutout mask)
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec2 texCoord0;
-in vec2 texCoordMask;
-in vec4 vertexColor;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec2 texCoord0;
+layout(location = 3) in vec2 texCoordMask;
+layout(location = 4) in vec4 vertexColor;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     if (texture(Sampler1, texCoordMask).a < 0.1) {

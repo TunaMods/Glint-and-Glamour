@@ -1,12 +1,12 @@
 package net.tunamods.customglint.common.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import javax.annotation.Nullable;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -203,7 +203,7 @@ public final class CustomGlintRenderer {
     // ── Isolated glow-outline (silhouette target + composite) ────────────────────────────────────
     // The 26.1 replacement for the entity-body stencil ring the 1.20.1/1.21.1 builds used (confirmed
     // dead end, the dilated band's depth flickered at silhouette edges). Orchestrated by
-    // EntityGlintRender.drainBodyOutlines at RenderLevelStageEvent.AfterWeather (off-shader) /
+    // EntityGlintRender.drainBodyOutlines at LevelRenderer.executeOutline HEAD (off-shader) /
     // LevelRendererMixin LevelRenderer.render TAIL (under an active Iris pack).
 
     private static final Map<Identifier, RenderType> BY_GLOW_MASK = new HashMap<>();
@@ -249,7 +249,8 @@ public final class CustomGlintRenderer {
      *  with the NEAREST overlapping surface, so the following wing glint/chromatic pass (LEQUAL,
      *  {@link GlintPipelines#GLINT_OVERLAY_WING} / {@link GlintPipelines#CHROMATIC_OVERLAY_WING}) drops the
      *  farther one instead of additively doubling the seam down the spine. Shared by the normal and chromatic
-     *  wing passes; the depth depends only on geometry + cutout, not the design. */
+     *  wing passes; the depth depends only on geometry + cutout, not the design. Quad items reuse it, keyed by atlas, to
+     *  hide their own far faces in the same drain. */
     public static RenderType forWingDepthPrepass(Identifier texture) {
         if (texture == null) return null;
         RenderType rt = BY_WING_DEPTH.computeIfAbsent(texture, t ->
@@ -429,10 +430,10 @@ public final class CustomGlintRenderer {
         return u;
     }
 
-    /** Draws all captured body silhouettes into the current output override (the mask target). The flush
-     *  consumes the staged vertices, so next frame starts clean. */
-    public static void flushBodyGlow() {
-        GLOW_BODY.flush();
+    /** Draws all captured body silhouettes into the mask target. The flush consumes the staged vertices, so the
+     *  next frame starts clean. */
+    public static void flushBodyGlow(GpuTextureView maskColor, GpuTextureView maskDepth) {
+        GLOW_BODY.flush(maskColor, maskDepth);
     }
 
     public static void resetBodyGlow() { bodyGlowPresent = false; bodyGlowCount = 0; bgBoxes.clear(); bgTightBoxes.clear(); glowIdCounter = 0; GLOW_ID_BY_IDENTITY.clear(); }
@@ -463,7 +464,7 @@ public final class CustomGlintRenderer {
      *  the model). The quad's vertex colour is forced to the resolved glow colour via
      *  {@link FullColorOverrideConsumer}; the pose is the camera-relative {@code ItemFeatureRenderer.Submit} pose, the same
      *  space the entity bodies drew in, so the silhouette lands at the right screen position. Runs inside the
-     *  AfterWeather drain, sharing the mask + composite with entity outlines (one unioned ring). */
+     *  after-main-pass drain, sharing the mask + composite with entity outlines (one unioned ring). */
     public static void accumulateItemGlowMask(PoseStack.Pose pose, List<BakedQuad> quads, int packedLight,
             int color, int category) {
         if (quads == null || quads.isEmpty()) return;
@@ -490,10 +491,9 @@ public final class CustomGlintRenderer {
         }
     }
 
-    /** Draws every silhouette accumulated for the current group (one draw per texture) to the current output
-     *  override (the mask target). */
-    public static void flushGlowMask() {
-        GLOW_MASK.flush();
+    /** Draws every silhouette accumulated for the current group (one draw per texture) into the mask target. */
+    public static void flushGlowMask(GpuTextureView maskColor, GpuTextureView maskDepth) {
+        GLOW_MASK.flush(maskColor, maskDepth);
     }
 
     /** Re-points the scene-depth holder at the live main-target depth view (registering it with
@@ -510,7 +510,7 @@ public final class CustomGlintRenderer {
 
     private static SceneDepthTexture sceneDepthTex;
 
-    /** Identifier for the STABLE opaque-depth snapshot (main depth copied at AfterOpaqueFeatures, before
+    /** Identifier for the STABLE opaque-depth snapshot (main depth copied at the end of the solid phase, before
      *  any translucent shell draws). The translucent-layer glint samples this so it occludes against terrain +
      *  solid bodies instead of the shell's per-frame re-sorted depth. See {@code EntityGlintRender.captureSolidDepth}. */
     public static final Identifier SOLID_DEPTH_ID = CustomGlint.res("solid_depth");
@@ -547,18 +547,18 @@ public final class CustomGlintRenderer {
                                             GpuTextureView outColorView, int[] scissor) {
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
                 .createRenderPass(() -> "customglint glow outline composite", outColorView, Optional.empty())) {
-            pass.setPipeline(GlintPipelines.GLOW_COMPOSITE_ID_PIPE);
+            pass.setPipeline(RenderSystem.getCompiledPipeline(GlintPipelines.GLOW_COMPOSITE_ID_PIPE));
             RenderSystem.bindDefaultUniforms(pass);
-            pass.bindTexture("MaskSampler", maskColorView,
+            pass.setUniform("MaskSampler", maskColorView,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
             // Scene depth, for the ring-occlusion test at the RING pixel (what world geometry stands there).
             // bindSceneDepth(main depth) runs each frame before any composite (EntityGlintRender), so the
             // holder's view is live here. NEAREST + clamp: a depth read needs the exact texel, not a blend.
-            pass.bindTexture("DepthSampler", sceneDepthTex.view,
+            pass.setUniform("DepthSampler", sceneDepthTex.view,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
             // The mask target's OWN depth, written by GLOW_MASK_PIPE at exactly the silhouette texels, which
             // is where the SOURCE's distance has to come from. See the srcDist note in post/glow_outline_id.
-            pass.bindTexture("MaskDepthSampler", maskDepthView,
+            pass.setUniform("MaskDepthSampler", maskDepthView,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
             if (scissor != null) pass.enableScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
             pass.draw(3, 1, 0, 0);
@@ -569,9 +569,9 @@ public final class CustomGlintRenderer {
     public static void upscaleGlowRing(GpuTextureView ringColorView, GpuTextureView mainColorView) {
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
                 .createRenderPass(() -> "customglint glow upscale", mainColorView, Optional.empty())) {
-            pass.setPipeline(GlintPipelines.GLOW_UPSCALE_PIPE);
+            pass.setPipeline(RenderSystem.getCompiledPipeline(GlintPipelines.GLOW_UPSCALE_PIPE));
             RenderSystem.bindDefaultUniforms(pass);
-            pass.bindTexture("InSampler", ringColorView,
+            pass.setUniform("InSampler", ringColorView,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             pass.draw(3, 1, 0, 0);
         }
@@ -1059,7 +1059,7 @@ public final class CustomGlintRenderer {
     }
 
     /** In-phase (off shader-pack) chromatic RT for an entity LAYER (sheep wool, slime outer shell), drawn on
-     *  top at AfterWeather and occluded against the stable opaque-depth snapshot ({@link #SOLID_DEPTH_ID}),
+     *  top after the main pass and occluded against the stable opaque-depth snapshot ({@link #SOLID_DEPTH_ID}),
      *  the chromatic counterpart of {@link #forEntityTranslucentLayerGlint}. Replaces routing layer chromatic
      *  through the EQUAL-depth body RT (which flickered against the layer's re-sorted / different-pipeline depth). */
     public static RenderType forEntityLayerChromaticSolid(Data glint, int layerIdx) {
@@ -1121,8 +1121,9 @@ public final class CustomGlintRenderer {
      *  {@code atlasW/16}, matching {@link #forGlint}'s flat-item calibration. */
     public static RenderType forItemGlintOverlay(Data glint, int layerIdx, Identifier atlas) {
         ensureAtlasDims();
+        // wing=true: LEQUAL against the item depth pre-pass, see drainChromaticOverlays.
         return chromaticOverlayRT(glint.layers()[layerIdx], "item_ov|" + atlas,
-                cachedAtlasW / 16.0f * CHROMATIC_FLAT_ITEM_MATCH, atlas);
+                cachedAtlasW / 16.0f * CHROMATIC_FLAT_ITEM_MATCH, atlas, SCENE_DEPTH_ID, true);
     }
 
     // ── Post-Iris NORMAL-glint overlay RenderTypes ───────────────────────────────────────────────
@@ -1244,7 +1245,8 @@ public final class CustomGlintRenderer {
         RenderType cached = BY_GLINT_OVERLAY.computeIfAbsent(key, k -> {
             RenderType rt = GlintPipelines.glintOverlayType(MOD_ID + ":custom_glint_overlay|" + k.hashCode(),
                     gray, atlas, SCENE_DEPTH_ID,
-                    () -> GlintPipelines.itemAnimationMatrix(speed, scaleU, scaleV, ps, colorIdx, cc, scrollDir, scrollOffset));
+                    () -> GlintPipelines.itemAnimationMatrix(speed, scaleU, scaleV, ps, colorIdx, cc, scrollDir, scrollOffset),
+                    true);   // wing pipeline: LEQUAL against the item depth pre-pass, see drainChromaticOverlays
             return rt;
         });
         return cached;
@@ -1256,9 +1258,9 @@ public final class CustomGlintRenderer {
     public static void compositeChromatic(GpuTextureView inView, GpuTextureView outView) {
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
                 .createRenderPass(() -> "customglint chromatic composite", outView, Optional.empty())) {
-            pass.setPipeline(GlintPipelines.CHROMATIC_COMPOSITE_PIPE);
+            pass.setPipeline(RenderSystem.getCompiledPipeline(GlintPipelines.CHROMATIC_COMPOSITE_PIPE));
             RenderSystem.bindDefaultUniforms(pass);
-            pass.bindTexture("InSampler", inView,
+            pass.setUniform("InSampler", inView,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             pass.draw(3, 1, 0, 0);
         }
@@ -1421,7 +1423,7 @@ public final class CustomGlintRenderer {
      * TRANSLUCENT entity-layer glint (slime outer shell). Reuses the {@link GlintPipelines#GLINT_OVERLAY}
      * pipeline (ALWAYS depth so it draws ON TOP of the translucent shell, additive GLINT blend) with an
      * in-shader occlusion test against the STABLE opaque-depth snapshot ({@link #SOLID_DEPTH_ID}) instead of
-     * the shell's re-sorted depth. Drawn on top at AfterWeather by {@code
+     * the shell's re-sorted depth. Drawn on top after the main pass by {@code
      * EntityGlintRender.drainTranslucentLayerGlints}; white dummy cutout (the shell geometry IS the shape).
      * Chromatic layers fall back to the body chromatic RT (rare combo).
      */
@@ -1632,6 +1634,7 @@ public final class CustomGlintRenderer {
         @Override public VertexConsumer setUv1(int u, int v) { return wrapped.setUv1(u, v); }
         @Override public VertexConsumer setUv2(int u, int v) { return wrapped.setUv2(u, v); }
         @Override public VertexConsumer setNormal(float x, float y, float z) { return wrapped.setNormal(x, y, z); }
+        @Override public VertexConsumer setUv3(float u, float v) { return wrapped.setUv3(u, v); }
     }
 
     /** Writes every vertex to two consumers. The body-glow tee: one model walk feeds both the body's own
@@ -1647,6 +1650,7 @@ public final class CustomGlintRenderer {
         @Override public VertexConsumer setUv1(int u, int v) { a.setUv1(u, v); b.setUv1(u, v); return this; }
         @Override public VertexConsumer setUv2(int u, int v) { a.setUv2(u, v); b.setUv2(u, v); return this; }
         @Override public VertexConsumer setNormal(float x, float y, float z) { a.setNormal(x, y, z); b.setNormal(x, y, z); return this; }
+        @Override public VertexConsumer setUv3(float u, float v) { a.setUv3(u, v); b.setUv3(u, v); return this; }
     }
 
     /** Wraps a VertexConsumer and records each vertex's eye-space position into a shared
@@ -1685,13 +1689,14 @@ public final class CustomGlintRenderer {
         @Override public VertexConsumer setUv1(int u, int v) { return wrapped.setUv1(u, v); }
         @Override public VertexConsumer setUv2(int u, int v) { return wrapped.setUv2(u, v); }
         @Override public VertexConsumer setNormal(float x, float y, float z) { return wrapped.setNormal(x, y, z); }
+        @Override public VertexConsumer setUv3(float u, float v) { return wrapped.setUv3(u, v); }
     }
 
     // ── Shader-mod detection ──────────────────────────────────────────────────
     // Reflective (via IrisApi) so we don't need a compileOnly dep on Iris. The three Method handles are
     // resolved once and cached. Used as a timing switch: under an active pack the glow drain happens mid-framegraph
     // (where Iris hijacks our framebuffer into its gbuffer → black screen), so the drain is relocated to
-    // LevelRendererMixin (LevelRenderer.render TAIL, post-Iris) and the AfterWeather drain in CustomGlintClientInit
+    // LevelRenderer.render TAIL (post-Iris) and LevelRendererMixin's after-main-pass drain
     // skips itself here. The actual pipeline→program wiring under a pack is handled by IrisCompat, not here.
     private static volatile boolean SHADER_LOOKUP_DONE = false;
     private static volatile Method SHADER_GET_INSTANCE = null;

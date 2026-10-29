@@ -8,14 +8,16 @@ import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
 import net.minecraft.client.renderer.SubmitNodeCollection;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.renderer.texture.UvMapping;
+import net.minecraft.client.resources.model.geometry.ItemQuads;
+import net.minecraft.world.item.ItemDisplayContext;
 import net.tunamods.customglint.common.CustomGlint;
 import net.tunamods.customglint.common.client.CustomGlintRenderer;
 import net.tunamods.customglint.common.client.EntityGlintRender;
 import net.tunamods.customglint.common.client.GlintCarrier;
+import net.tunamods.customglint.common.client.GlintFeatureRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -29,8 +31,8 @@ import java.util.List;
  * The universal model sink. Every model submit lands on {@link SubmitNodeCollection#submitModel}: the entity
  * body and every {@code RenderLayer} surface (sheep wool, slime outer cube, saddle, stray clothing, …), and
  * every special-renderer item part. {@code SubmitNodeStorage.submitModel} only delegates to {@code order(0)},
- * renderers that submit at a later order ({@code collector.order(n).submitModel}: the trident, the shield
- * foil, banner patterns) come here directly, and 26.2's {@code submitModelPart} is a default that wraps the
+ * renderers that submit at a later order ({@code collector.order(n).submitModel}: banner patterns) come here
+ * directly, and since 26.2 {@code submitModelPart} is a default that wraps the
  * part in a {@code Model.Simple} and calls {@code submitModel} too. So this one hook sees each model once.
  *
  * <p><b>Special-renderer items</b> (shield, trident, anything drawn through a {@code SpecialModelRenderer}
@@ -39,10 +41,8 @@ import java.util.List;
  * {@link GlintCarrier#SUBMIT_GLOWING} / {@link GlintCarrier#SUBMIT_GLOW_COLORS} are non-null only inside an
  * item submit, and a special renderer's model submits are the only model nodes produced there). They get:
  * <ul>
- * <li>their vanilla foil node consumed (a separate model node in a vanilla glint RenderType) when our glint
- *     is present, so the two never stack;</li>
  * <li>the glow outline queued (white.png silhouette, the 1.21.1 BEWLR full-shape approach) for the shared
- *     AfterWeather / hand-render drain;</li>
+ *     after-main-pass / hand-render drain;</li>
  * <li>our animated GLINT. The vanilla foil is gated on enchantment ({@code SpecialModelWrapper.update} reads
  *     {@code ItemStack.hasFoil()}), so a glinted but unenchanted item never reaches it; we submit our own glint
  *     model nodes instead, once per item submit ({@link #cg_firstGlintForToken()}) so a shield's base +
@@ -53,32 +53,24 @@ import java.util.List;
  * the 1.21.1 {@code GlintWrappingBufferSource} fan-out. The BASE body is glinted directly by
  * {@code LivingEntityRendererMixin}, so it's skipped via the current-body-model guard. Per-layer glow OUTLINE
  * rides the in-phase tee in {@code ModelFeatureRendererMixin}, not this hook.
- *
- * <p>Re-entrancy guarded so the glint nodes we submit (which call {@code submitModel} again) don't loop.
  */
 @Mixin(SubmitNodeCollection.class)
 public class SubmitNodeCollectionMixin {
 
-    /** Guards against re-entering this hook while submitting our own glint nodes (which call
-     *  {@code submitModel} again). Render thread only. */
-    @Unique
-    private static boolean cg_addingGlint = false;
-
     /** Per-item-submit token of the last submit we added glint for. A special renderer can submit several
-     *  model nodes per item (shield: base + patterns + foil); glinting only the first keeps one glint pass
+     *  model nodes per item (shield: base + patterns); glinting only the first keeps one glint pass
      *  over the item shape instead of stacking one per node. */
     @Unique
     private static final ThreadLocal<Object> cg_glintedToken = new ThreadLocal<>();
 
-    @Inject(method = "submitModel", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "submitModel", at = @At("HEAD"), require = 0)
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void cg_submitModel(Model model, Object state, PoseStack poseStack, RenderType renderType,
-            int lightCoords, int overlayCoords, int tintedColor, TextureAtlasSprite sprite, int outlineColor,
-            ModelFeatureRenderer.CrumblingOverlay crumblingOverlay, CallbackInfo ci) {
-        if (cg_addingGlint) return; // our own glint nodes, don't recurse
+            int lightCoords, int overlayCoords, int tintedColor, UvMapping uvMapping, int outlineColor,
+            CallbackInfo ci) {
         CustomGlint.Data itemGlint = GlintCarrier.SUBMIT_GLINT.get();
         if (itemGlint != null || cg_glowingItem()) {
-            cg_specialItem(model, state, poseStack, renderType, lightCoords, itemGlint, ci);
+            cg_specialItem(model, state, poseStack, lightCoords, itemGlint);
             return;
         }
         if (!(state instanceof EntityRenderState ers) || !(model instanceof EntityModel)) return;
@@ -86,7 +78,7 @@ public class SubmitNodeCollectionMixin {
         if (!EntityGlintRender.isEntitySurface(renderType)) return;
         EntityGlintRender.Resolution res = ers.getRenderData(EntityGlintRender.RENDER_DATA);
         if (res == null || res.data == null) return;
-        // Off a shader pack, stash the layer glint for the stable-depth draw at AfterWeather (drawn on top,
+        // Off a shader pack, stash the layer glint for the stable-depth draw after the main pass (drawn on top,
         // occluded against the opaque-depth snapshot) when it would otherwise fight a re-sorted / mismatched
         // depth in-phase:
         //   1. a TRANSLUCENT layer (slime outer shell) lands in the distance-sorted translucent phase with
@@ -100,43 +92,27 @@ public class SubmitNodeCollectionMixin {
                     res.data, lightCoords);
             return;
         }
-        cg_addingGlint = true;
-        try {
-            // null cutout texture → the chromatic overlay draws the full layer mesh, matching how the glow
-            // path silhouettes these RenderLayer surfaces (white.png full shape, their hull IS the shape).
-            EntityGlintRender.submitEntityGlint((OrderedSubmitNodeCollector) (Object) this,
-                    (EntityModel<?>) model, state, poseStack, lightCoords, res.data, null, true, translucent);
-        } finally {
-            cg_addingGlint = false;
-        }
+        // null cutout texture → the chromatic overlay draws the full layer mesh, matching how the glow
+        // path silhouettes these RenderLayer surfaces (white.png full shape, their hull IS the shape).
+        EntityGlintRender.submitEntityGlint((OrderedSubmitNodeCollector) (Object) this,
+                (EntityModel<?>) model, state, poseStack, lightCoords, res.data, null, true, translucent);
     }
 
     /** One model node of a special-renderer item, inside its {@code ItemStackRenderState.submit} span. */
     @Unique
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private void cg_specialItem(Model model, Object state, PoseStack poseStack, RenderType renderType,
-            int lightCoords, CustomGlint.Data glint, CallbackInfo ci) {
-        // Consume vanilla foil: a special renderer submits its enchantment glint as a SEPARATE model node in
-        // a vanilla glint RenderType (shield and trident both, in 26.2). When our glint is present we draw our
-        // own, so drop vanilla's node here to avoid a doubled shimmer. (The base/pattern nodes use cutout
-        // RenderTypes, not glint, so only the foil node is cancelled.)
-        if (cg_isVanillaGlint(renderType)) {
-            if (glint != null) ci.cancel();
-            return; // the foil re-draws the base shape; it is never outlined either way
-        }
+    private void cg_specialItem(Model model, Object state, PoseStack poseStack, int lightCoords,
+            CustomGlint.Data glint) {
+        // Vanilla's own foil is already off here: ItemLayerRenderStateMixin clears hasFoil under our glint, so
+        // the special renderer submitted its plain base.
         if (cg_glowingItem()) {
             EntityGlintRender.queueSpecialModelOutline(model, state, poseStack.last(), lightCoords,
                     glint, cg_glowingFlag(), GlintCarrier.SUBMIT_GLOW_COLORS.get(),
                     cg_glowSpeed(), cg_glowInterp());
         }
         if (glint != null && cg_firstGlintForToken()) {
-            cg_addingGlint = true;
-            try {
-                EntityGlintRender.submitSpecialModelGlint((OrderedSubmitNodeCollector) (Object) this, model, state,
-                        poseStack, lightCoords, glint);
-            } finally {
-                cg_addingGlint = false;
-            }
+            EntityGlintRender.submitSpecialModelGlint((OrderedSubmitNodeCollector) (Object) this, model, state,
+                    poseStack, lightCoords, glint);
         }
     }
 
@@ -155,6 +131,23 @@ public class SubmitNodeCollectionMixin {
         if (state instanceof EntityRenderState es && es.getRenderData(EntityGlintRender.GLOW_OUTLINE) != null) return 0;
         if (cg_glowingItem()) return 0;
         return outlineColor;
+    }
+
+    /**
+     * The flat-item glint: one {@link GlintFeatureRenderer} node per glint layer over the item's quads, where
+     * vanilla's foil would have been (CuboidItemModelWrapperMixin forces the foil on for a glinted world item;
+     * {@code ItemRendererMixin} keeps vanilla from baking its own glint into those quads). Solid and translucent
+     * quads go separately so each lands after the item quads it covers. Under an active shader pack nothing
+     * draws in-phase (an in-phase glint goes SOLID); {@code ItemRendererMixin} queues the overlay drain instead.
+     */
+    @Inject(method = "submitItem", at = @At("HEAD"), require = 0)
+    private void cg_itemGlint(PoseStack poseStack, ItemDisplayContext displayContext, int lightCoords, int overlayCoords,
+            int outlineColor, int[] tintLayers, ItemQuads quads, ItemStackRenderState.FoilType foilType, CallbackInfo ci) {
+        CustomGlint.Data glint = GlintCarrier.SUBMIT_GLINT.get();
+        if (glint == null || foilType == ItemStackRenderState.FoilType.NONE || CustomGlintRenderer.isShaderPackActive()) return;
+        OrderedSubmitNodeCollector self = (OrderedSubmitNodeCollector) (Object) this;
+        GlintFeatureRenderer.submitItemGlint(self, glint, poseStack.last(), quads.solid(), lightCoords, overlayCoords, false);
+        GlintFeatureRenderer.submitItemGlint(self, glint, poseStack.last(), quads.translucent(), lightCoords, overlayCoords, true);
     }
 
     /** The quad-item twin of {@link #cg_muteVanillaModelGlow}: dropped and 3rd-person held items whose
@@ -177,13 +170,6 @@ public class SubmitNodeCollectionMixin {
     private static boolean cg_hasChromatic(CustomGlint.Data data) {
         for (CustomGlint.Layer l : data.layers()) if (CustomGlint.isChromatic(l)) return true;
         return false;
-    }
-
-    /** True for vanilla's enchantment-glint RenderTypes (the foil sheets). Identity compare against the
-     *  three memoized singletons, our own glint RTs are never these. */
-    @Unique
-    private static boolean cg_isVanillaGlint(RenderType rt) {
-        return rt == RenderTypes.entityGlint() || rt == RenderTypes.glint() || rt == RenderTypes.glintTranslucent();
     }
 
     @Unique

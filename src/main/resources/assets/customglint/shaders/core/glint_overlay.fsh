@@ -1,9 +1,10 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
-#moj_import <minecraft:fog.glsl>
-#moj_import <minecraft:globals.glsl>
-#moj_import <minecraft:dynamictransforms.glsl>
-#moj_import <minecraft:projection.glsl>
+#include <minecraft:fog.glsl>
+#include <minecraft:globals.glsl>
+#include <minecraft:dynamictransforms.glsl>
+#include <minecraft:projection.glsl>
 
 // Custom Glints NORMAL-glint overlay fragment shader, the post-Iris counterpart of core/glint_color.fsh.
 // The design brightness + per-vertex tint are identical to the in-phase glint; the only additions are the
@@ -15,15 +16,15 @@ uniform sampler2D Sampler0;     // grayscale design (the scrolling pattern; rgb 
 uniform sampler2D Sampler1;     // model/atlas texture; its alpha drives the cutout silhouette
 uniform sampler2D DepthSampler; // full-res committed scene depth (main target)
 
-in float sphericalVertexDistance;
-in float cylindricalVertexDistance;
-in vec2 designCoord;
-in vec2 cutoutCoord;
-in vec4 vertexColor;
-in float viewDist;
-in vec4 screenPos;
+layout(location = 0) in float sphericalVertexDistance;
+layout(location = 1) in float cylindricalVertexDistance;
+layout(location = 2) in vec2 designCoord;
+layout(location = 3) in vec2 cutoutCoord;
+layout(location = 4) in vec4 vertexColor;
+layout(location = 5) in float viewDist;
+layout(location = 6) in vec4 screenPos;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // Occlusion tolerance in BLOCKS of linear view distance (distance-independent, unlike a window-depth
 // epsilon). This is the TIGHT variant, for OPAQUE entity-surface layers (sheep wool, saddle, clothing) and
@@ -42,12 +43,14 @@ const float MIN_BIAS = 0.015;
 const float SLOPE_BIAS = 0.6;
 
 // Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
-// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
-// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
-// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
-// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix (reversed-Z included); only the
+// depth -> ndc step depends on the clip depth range, which the shader compiler reports.
 float eyeDist(float windowDepth) {
-    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+#ifdef RENDERPEARL_DEPTH_IS_ZERO_TO_ONE
+    float ndc = windowDepth;
+#else
+    float ndc = windowDepth * 2.0 - 1.0;
+#endif
     return ProjMat[3][2] / (ndc + ProjMat[2][2]);
 }
 

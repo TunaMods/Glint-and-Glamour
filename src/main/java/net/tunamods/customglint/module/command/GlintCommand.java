@@ -19,6 +19,7 @@ import net.tunamods.customglint.module.menu.GlintTableMenu;
 import net.tunamods.customglint.module.menu.ModAttachments;
 import net.tunamods.customglint.module.network.GlintStoredSyncPacket;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraft.util.Prediction;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -392,7 +393,7 @@ public class GlintCommand {
                     List.of(), List.of(), List.of()));
         }
 
-        if (!player.getInventory().add(trim)) player.drop(trim, false);
+        if (!player.getInventory().add(trim)) player.drop(trim, false, Prediction.SERVER_ONLY);
         source.sendSuccess(() -> Component.literal("Glint Trim extracted"), false);
         return 1;
     }

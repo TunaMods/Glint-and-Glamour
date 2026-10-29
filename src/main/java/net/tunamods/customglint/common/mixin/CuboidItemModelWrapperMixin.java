@@ -15,16 +15,17 @@ import org.spongepowered.asm.mixin.injection.At;
  * Routes a glinted item's GUI icon to the LIVE glint overlay instead of baking the glint into the cached
  * atlas slot, so the icon no longer re-renders every frame just to animate the glint.
  *
- * <p>{@code ItemFeatureRenderer.prepareSubmit} only calls {@code getFoilBuffer} (where the custom
- * glint is injected, see {@code ItemRendererMixin}) when the layer's {@code FoilType != NONE}.
+ * <p>Our flat-item glint is only submitted (see {@code SubmitNodeCollectionMixin.submitItem}) when the
+ * layer's {@code FoilType != NONE}.
  * {@code CuboidItemModelWrapper.update} derives the foil type from {@code ItemStack.hasFoil()} and, when
  * foiled, calls {@code output.setAnimated()}, which makes the GUI item atlas discard + re-bake that icon
  * EVERY frame ({@code GuiItemAtlas} / {@code DynamicAtlasAllocator}). With dozens of glinted items on screen
  * (the creative tab) that is the frame drop.
  *
  * <ul>
- *   <li><b>Non-GUI</b> (held / dropped / item frame): force the foil on so the glint draws through
- *       {@code getFoilBuffer} as before, those contexts re-render every frame anyway, no atlas cache.</li>
+ *   <li><b>Non-GUI</b> (held / dropped / item frame): force the foil on so our glint is submitted
+ *       (vanilla's own is switched off by {@code ItemRendererMixin}), those contexts re-render every frame
+ *       anyway, no atlas cache.</li>
  *   <li><b>GUI, custom glint, not already enchanted</b>: do NOT force the foil, the base icon bakes once
  *       and caches, and flag the render state ({@link CgGlintHolder#customglint$setGuiGlintOverlay}) so
  *       {@code GuiRendererMixin} draws the scrolling glint live on top via {@code GuiItemGlintRenderState}.</li>

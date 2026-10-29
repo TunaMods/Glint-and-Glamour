@@ -1,4 +1,5 @@
 #version 330
+#extension GL_ARB_separate_shader_objects : require
 
 // Custom Glints GUI item-outline fragment shader. Pairs with vanilla core/position_tex_color.vsh.
 //
@@ -28,20 +29,14 @@
 //   * Round-disc neighbourhood for the dilation: DASHED 45-degree edges (the (1,1) diagonal drops out below
 //     ~1.41 radius). Use the SQUARE (Chebyshev) neighbourhood below.
 
-// DynamicTransforms, inlined (startup core shaders can't moj_import; mirrors position_tex_color.fsh).
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
+#include <minecraft:dynamictransforms.glsl>
 
 uniform sampler2D Sampler0;
 
-in vec2 texCoord0;
-in vec4 vertexColor;
+layout(location = 0) in vec2 texCoord0;
+layout(location = 1) in vec4 vertexColor;
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // Halo thickness in ITEM pixels (an icon is 16 item-pixels wide). MUST equal GuiRendererMixin.OUTLINE_MARGIN
 // — the mixin grows the blit quad by this much and SCALE is derived from it. This is the thickness knob.

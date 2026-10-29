@@ -1,5 +1,6 @@
 package net.tunamods.customglint.module.menu;
 
+import net.minecraft.util.Prediction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
@@ -19,7 +20,7 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
-import net.neoforged.neoforge.items.IItemHandler;
+import net.tunamods.customglint.module.item.BagContainer;
 import net.tunamods.customglint.module.item.GlintBagItem;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -607,7 +608,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
         // Output: give to the player (drop overflow) and store in the printed library. Give a copy: addItem
         // empties the stack it is handed, and trim is read below for the library and the advancements.
         ItemStack given = trim.copy();
-        if (!sp.addItem(given)) sp.drop(given, false);
+        if (!sp.addItem(given)) sp.drop(given, false, Prediction.SERVER_ONLY);
         storePrinted(sp, trim);
 
         // A trim printed with the full 8 colors earns "Ratatouille"; a layered trim earns "Like Ogres", the
@@ -659,7 +660,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
         if (named && !name.isEmpty() && (nameDye != null || nameRainbow)) container.removeItem(SLOT_NAME_DYE, 1);
 
         ItemStack given = trim.copy(); // addItem empties the stack it is handed, and trim is stored below
-        if (!sp.addItem(given)) sp.drop(given, false);
+        if (!sp.addItem(given)) sp.drop(given, false, Prediction.SERVER_ONLY);
         storePrinted(sp, trim);
     }
 
@@ -890,7 +891,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
      * remaining duplicates stay in the bag (there's nothing left to learn from them).
      */
     public static void depositBagContents(ServerPlayer sp, ItemStack bag) {
-        IItemHandler handler = GlintBagItem.createHandler(bag);
+        BagContainer handler = GlintBagItem.contents(bag);
 
         // A bag can carry dozens of trims; syncing on every store would burst a packet per deposit. Defer the
         // library sync through the loop, then push the stored/printed state once at the end.
@@ -898,12 +899,12 @@ public class GlintTableMenu extends AbstractContainerMenu {
         boolean printedChanged = false;
         deferLibrarySync = true;
         try {
-            for (int i = 0; i < handler.getSlots(); i++) {
-                if (!isAnyTrim(handler.getStackInSlot(i))) continue;
+            for (int i = 0; i < handler.getContainerSize(); i++) {
+                if (!isAnyTrim(handler.getItem(i))) continue;
                 // Deposit one at a time; each newly-stored copy is consumed, and the moment a copy is a
                 // duplicate (or the library is full) we stop on this slot, leaving the rest in the bag.
                 while (true) {
-                    ItemStack s = handler.getStackInSlot(i);
+                    ItemStack s = handler.getItem(i).copy(); // stored as-is below; the bag slot shrinks after
                     if (s.isEmpty()) break;
                     boolean stored;
                     if (isPainted(s)) {
@@ -914,7 +915,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
                         stored = storeDesign(sp, designName(s));
                     } else break;
                     if (!stored) break;
-                    handler.extractItem(i, 1, false);
+                    handler.removeItem(i, 1);
                 }
             }
         } finally {
@@ -941,12 +942,12 @@ public class GlintTableMenu extends AbstractContainerMenu {
      * by the library deposit above and skipped here. Each material fills its own slot up to the slot's cap; the
      * remainder stays in the bag.
      */
-    private static void depositBagMaterials(ServerPlayer sp, IItemHandler handler) {
+    private static void depositBagMaterials(ServerPlayer sp, BagContainer handler) {
         SimpleContainer table = new SimpleContainer(TABLE_SIZE);
         sp.getData(ModAttachments.GLINT_TABLE_CONTENTS.get()).copyInto(table.getItems());
         boolean changed = false;
-        for (int i = 0; i < handler.getSlots(); i++) {
-            ItemStack s = handler.getStackInSlot(i);
+        for (int i = 0; i < handler.getContainerSize(); i++) {
+            ItemStack s = handler.getItem(i);
             if (s.isEmpty() || isAnyTrim(s)) continue; // trims go to the library, not the build slots
             int[] targets = candidateSlots(s);
             if (targets.length == 0) continue; // not a table material
@@ -956,7 +957,7 @@ public class GlintTableMenu extends AbstractContainerMenu {
             if (!cur.isEmpty() && !ItemStack.isSameItemSameComponents(cur, s)) continue; // occupied by something else
             int space = cap - cur.getCount();
             if (space <= 0) continue;
-            ItemStack pulled = handler.extractItem(i, Math.min(space, s.getCount()), false);
+            ItemStack pulled = handler.removeItem(i, Math.min(space, s.getCount()));
             if (pulled.isEmpty()) continue;
             if (cur.isEmpty()) {
                 table.setItem(slot, pulled);

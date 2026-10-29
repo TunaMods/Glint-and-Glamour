@@ -4,6 +4,7 @@ import com.google.common.base.Suppliers;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.core.Holder;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -14,6 +15,7 @@ import net.neoforged.neoforge.common.loot.LootModifier;
 import net.tunamods.customglint.common.CustomGlint;
 import net.tunamods.customglint.module.rule.GlintRules;
 
+import java.util.Optional;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -23,8 +25,8 @@ public class GlintLootModifier extends LootModifier {
         Suppliers.memoize(() -> RecordCodecBuilder.mapCodec(inst ->
             codecStart(inst).apply(inst, GlintLootModifier::new)));
 
-    protected GlintLootModifier(LootItemCondition[] conditions, int priority) {
-        super(conditions, priority);
+    protected GlintLootModifier(Optional<Holder<LootItemCondition>> condition, int priority) {
+        super(condition, priority);
     }
 
     @Override

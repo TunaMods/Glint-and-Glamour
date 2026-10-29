@@ -1,8 +1,8 @@
 package net.tunamods.customglint.common.mixin;
 
-import net.minecraft.client.renderer.feature.FeatureFrameContext;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
-import net.minecraft.client.renderer.feature.RenderTypeFeatureRenderer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.tunamods.customglint.common.CustomGlint;
@@ -10,7 +10,6 @@ import net.tunamods.customglint.common.client.CgGlintHolder;
 import net.tunamods.customglint.common.client.CustomGlintRenderer;
 import net.tunamods.customglint.common.client.EntityGlintRender;
 import net.tunamods.customglint.common.client.GlintCarrier;
-import net.tunamods.customglint.common.client.ItemGlintFoil;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -19,47 +18,43 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 /**
- * Draws the custom per-item glint in the 26.2 deferred item pipeline.
+ * The vanilla side of the per-item glint in the 26.3 deferred item pipeline. Our glint itself is submitted as
+ * {@code GlintFeatureRenderer} nodes from {@code SubmitNodeCollectionMixin.submitItem}.
  *
- * <p>Item quads are queued as {@link ItemFeatureRenderer.Submit} nodes and built into the shared staged
- * vertex buffer later, in {@code ItemFeatureRenderer.buildGroup}: every submit's main quads first, then every
- * submit's foil, each through {@code prepareSubmit(submit, foil)}. The original stack is gone by then, so the
- * glint rides the node (see {@link CgGlintHolder} / {@link GlintCarrier}). For a glinted submit the foil pass
- * is cancelled and its quads recorded in {@link ItemGlintFoil}; at {@code buildGroup} RETURN they are written
- * layer-major, one draw per glint layer for the whole group (see that class for why quad-major tanked FPS).
- * The base item texture is built separately by {@code prepareMainSubmit}, so ours carries only the glint.
- *
- * <p>Extends {@link RenderTypeFeatureRenderer} (ItemFeatureRenderer's superclass) only so the inherited
- * {@code getVertexBuilder} is callable from here.
+ * <p>Item quads are queued as {@link ItemFeatureRenderer.Submit} nodes and built later, in
+ * {@code ItemFeatureRenderer.buildGroup}, one {@code prepareSubmit(submit)} each. The original stack is gone by
+ * then, so the glint rides the node (see {@link CgGlintHolder} / {@link GlintCarrier}). 26.3 bakes vanilla's
+ * enchant glint into the quads' own RenderType ({@code itemGlintRenderType}), picked from the submit's foil
+ * type in {@code prepareMainSubmit}; for a glinted submit that read becomes NONE, so vanilla builds the plain
+ * item under our glint. {@code prepareSubmit} HEAD queues the glow outline and the shader-pack overlay.
  */
 @Mixin(ItemFeatureRenderer.class)
-public abstract class ItemRendererMixin extends RenderTypeFeatureRenderer<ItemFeatureRenderer.Submit> {
+public class ItemRendererMixin {
 
-    @Inject(method = "prepareSubmit", at = @At("HEAD"), cancellable = true, require = 0)
-    private void cg_prepareSubmitHead(ItemFeatureRenderer.Submit submit, boolean foil, CallbackInfo ci) {
+    /** Our glint EATS vanilla's foil, never stacks on it, on and off a shader pack. */
+    @ModifyExpressionValue(method = "prepareMainSubmit",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/feature/ItemFeatureRenderer$Submit;foilType()Lnet/minecraft/client/renderer/item/ItemStackRenderState$FoilType;"),
+            require = 0)
+    private ItemStackRenderState.FoilType cg_plainBaseUnderOurGlint(ItemStackRenderState.FoilType original,
+            @Local(argsOnly = true) ItemFeatureRenderer.Submit submit) {
+        return ((CgGlintHolder) (Object) submit).customglint$getGlint() != null
+                ? ItemStackRenderState.FoilType.NONE : original;
+    }
+
+    @Inject(method = "prepareSubmit", at = @At("HEAD"), require = 0)
+    private void cg_prepareSubmitHead(ItemFeatureRenderer.Submit submit, CallbackInfo ci) {
         CgGlintHolder holder = (CgGlintHolder) (Object) submit;
-        if (foil) {
-            CustomGlint.Data glint = holder.customglint$getGlint();
-            // Vanilla only builds a foil for a foiled submit; ours replaces it there and nowhere else.
-            if (glint == null || submit.foilType() == ItemStackRenderState.FoilType.NONE) return;
-            // Our glint EATS vanilla's foil, never stacks on it. Under an active shader pack nothing draws
-            // in-phase (an in-phase glint goes SOLID); the overlay drain queued below draws it instead.
-            ci.cancel();
-            if (!CustomGlintRenderer.isShaderPackActive()) {
-                ItemGlintFoil.add(glint, submit.pose(), submit.quads(), submit.lightCoords(), submit.overlayCoords());
-            }
-            return;
-        }
-        // The vanilla outline is its own Submit (outline phase, outlineColor != 0); only the main one queues.
+        // The vanilla outline is its own Submit (outline phase, outlineColor != 0); only the main one counts.
         if (submit.outlineColor() != 0) return;
-        // Queue the item's glow outline for the AfterWeather drain (the same isolated silhouette-mask +
+        // Queue the item's glow outline for the after-main-pass drain (the same isolated silhouette-mask +
         // composite pass that draws entity rings, see EntityGlintRender). The item's base quads are committed
         // to the main target before that drain, so the scene depth the mask shader samples for occlusion is
         // there.
         boolean glowing = holder.customglint$isGlowing();
         int[] glowColors = holder.customglint$getGlowColors();
         // GUI icons get their glow from the flat halo blit (GuiRendererMixin), not this 3D silhouette
-        // composite, which drains at AfterWeather (a world phase) and would otherwise just queue
+        // composite, which drains after the main pass (a world phase) and would otherwise just queue
         // per-glowing-icon jobs every atlas bake that never draw correctly. Skip them.
         boolean isGui = submit.displayContext() == ItemDisplayContext.GUI;
         if (!isGui && (glowing || (glowColors != null && glowColors.length > 0))) {
@@ -78,7 +73,7 @@ public abstract class ItemRendererMixin extends RenderTypeFeatureRenderer<ItemFe
         // so chromatic goes flat white and normal glint goes SOLID (every gbuffer entity program it can pick
         // is opaque, it replaces the item surface instead of adding onto it). Queue EVERY layer for the
         // post-Iris overlay drain (world drain for 3rd-person/dropped, hand drain for first-person); the
-        // foil pass above draws no layer under a pack. Off the pack it draws normally.
+        // in-phase glint above is skipped under a pack. Off the pack it draws normally.
         CustomGlint.Data glint = holder.customglint$getGlint();
         if (!isGui && glint != null && CustomGlintRenderer.isShaderPackActive()) {
             // Same NONE-context fallback as the glow queue above (SB backpack): route by the hand-window flag.
@@ -105,15 +100,5 @@ public abstract class ItemRendererMixin extends RenderTypeFeatureRenderer<ItemFe
                 }
             }
         }
-    }
-
-    @Inject(method = "buildGroup", at = @At("HEAD"), require = 0)
-    private void cg_buildGroupHead(FeatureFrameContext context, List<ItemFeatureRenderer.Submit> submits, CallbackInfo ci) {
-        ItemGlintFoil.clear(); // a group that threw mid-build must not leak into this one
-    }
-
-    @Inject(method = "buildGroup", at = @At("RETURN"), require = 0)
-    private void cg_buildGroupReturn(FeatureFrameContext context, List<ItemFeatureRenderer.Submit> submits, CallbackInfo ci) {
-        ItemGlintFoil.flush(this::getVertexBuilder);
     }
 }

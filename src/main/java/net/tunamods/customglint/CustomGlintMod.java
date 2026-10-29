@@ -26,8 +26,7 @@ import net.neoforged.neoforge.event.entity.living.LivingDropsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.items.IItemHandler;
-import net.neoforged.neoforge.items.ItemHandlerHelper;
+import net.tunamods.customglint.module.item.BagContainer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import net.tunamods.customglint.common.CustomGlint;
@@ -145,8 +144,8 @@ public class CustomGlintMod {
             ItemStack bag = inv.getItem(i);
             if (!(bag.getItem() instanceof GlintBagItem)) continue;
             if (!GlintBagItem.isAutoCollect(bag)) continue;
-            IItemHandler handler = GlintBagItem.createHandler(bag);
-            remaining = ItemHandlerHelper.insertItemStacked(handler, remaining, false);
+            BagContainer contents = GlintBagItem.contents(bag);
+            remaining = contents.insert(remaining);
         }
 
         int inserted = before - remaining.getCount();
