@@ -39,6 +39,16 @@ out vec4 fragColor;
 // doesn't need a grazing-rim allowance because we tolerate its self-occlusion outright.
 const float OCCLUSION_BIAS = 0.10;
 
+// Window depth -> positive linear eye distance, through the same projection the geometry was drawn with.
+// ProjMat[3][2] / (ndc + ProjMat[2][2]) holds for any perspective matrix; only the depth -> ndc step depends
+// on the clip depth range. 26.2 builds its projection reversed-Z (near and far swapped) in [0,1] clip depth on
+// Vulkan and on OpenGL with ARB_clip_control, and in [-1,1] without it. Reversed, ProjMat[2][2] is
+// near/(far-near) (~0) in the first case and (far+near)/(far-near) (~1) in the second, so it tells them apart.
+float eyeDist(float windowDepth) {
+    float ndc = ProjMat[2][2] < 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+    return ProjMat[3][2] / (ndc + ProjMat[2][2]);
+}
+
 void main() {
     if (texture(Sampler1, cutoutCoord).a < 0.1) {
         discard;
@@ -46,8 +56,7 @@ void main() {
 
     vec2 uv = (screenPos.xy / screenPos.w) * 0.5 + 0.5;
     float sceneDepth = texture(DepthSampler, uv).r;
-    float ndc = sceneDepth * 2.0 - 1.0;
-    float sceneDist = ProjMat[3][2] / (ndc + ProjMat[2][2]);
+    float sceneDist = eyeDist(sceneDepth);
     if (viewDist > sceneDist + OCCLUSION_BIAS) {
         discard;
     }

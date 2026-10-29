@@ -1,5 +1,6 @@
 package net.tunamods.customglint.common.client;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -8,8 +9,6 @@ import com.mojang.blaze3d.vertex.QuadInstance;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.model.Model;
-import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.OrderedSubmitNodeCollector;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
@@ -26,6 +25,7 @@ import net.tunamods.customglint.common.CustomGlintComponents;
 
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
+import org.joml.Vector4fc;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -35,6 +35,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static net.tunamods.customglint.CustomGlintMod.MOD_ID;
 
 /**
  * Client-only entity glint draw. Called from {@link
@@ -87,7 +89,7 @@ public final class EntityGlintRender {
      * Per-frame glow-outline request for a glowing entity body. Set on the render state by
      * {@code LivingEntityRendererMixin} (which has {@code getTextureLocation}); read at draw time by
      * {@code ModelFeatureRendererMixin} to tee the silhouette in-phase, vanilla's own outline path
-     * (see {@code ModelFeatureRenderer.renderModel}) does the same with {@code outlineColor}. Cleared
+     * (see {@code ModelFeatureRenderer.prepareModel}) does the same with {@code outlineColor}. Cleared
      * to null every frame for non-glowing entities, so a pooled/reused render state can't leak a stale
      * outline. {@code color} is the resolved animated glow colour; {@code texture} drives the mask
      * alpha-discard so the silhouette follows the real entity shape.
@@ -205,66 +207,19 @@ public final class EntityGlintRender {
     }
 
     /**
-     * Submits the glint for a special-renderer 3D item that draws via a single {@code ModelPart} (trident):
-     * one {@code submitModelPart} per glint layer/colour into the item glint RenderType ({@code isItem=false}
-     * → 3D scale), so the glint follows the model shape. The submit-node analog of the quad-item
-     * {@code getFoilBuffer} replacement: vanilla foil is gated on enchantment, but a glinted item need not
-     * be enchanted, so we draw our own glint geometry independently. Called from {@code SubmitNodeStorageMixin}
-     * during the special renderer's submit (item glint context active). Animated colour rides the node's
-     * {@code tintedColor} (read by {@code customglint:core/glint_color}).
-     */
-    public static void submitSpecialPartGlint(SubmitNodeCollector collector,
-            ModelPart part, PoseStack pose, int light, CustomGlint.Data glint) {
-        CustomGlint.Layer[] gl = glint.layers();
-        for (int layerIdx = 0; layerIdx < gl.length; layerIdx++) {
-            int[] colors = layerColors(gl[layerIdx]);
-            // Under a pack, queue for the post-Iris overlay drain (white-dummy cutout = full model shape,
-            // like the glow part path): chromatic (else → flat white) AND normal (else → SOLID); first-person
-            // hand items route to the hand drain.
-            boolean chroma = CustomGlint.isChromatic(gl[layerIdx]);
-            if (CustomGlintRenderer.isShaderPackActive()) {
-                if (chroma) {
-                    RenderType rt = CustomGlintRenderer.forSpecialItemGlintOverlay(glint, layerIdx);
-                    if (rt != null) queueChromaticPart(part, pose.last(), rt, light, inFirstPersonHand());
-                } else if (gl[layerIdx].simultaneous()) {
-                    for (int i = 0; i < colors.length; i++) {
-                        RenderType rt = CustomGlintRenderer.forSpecialItemGlintOverlayNormal(glint, layerIdx, i);
-                        if (rt != null) queueGlintOverlayPart(part, pose.last(), rt, light,
-                                CustomGlintRenderer.packAdjustedColor(glint, layerIdx, colors[i]), inFirstPersonHand());
-                    }
-                } else {
-                    int color = CustomGlintRenderer.computeAnimatedColor(glint, layerIdx);
-                    RenderType rt = CustomGlintRenderer.forSpecialItemGlintOverlayNormal(glint, layerIdx, 0);
-                    if (rt != null) queueGlintOverlayPart(part, pose.last(), rt, light, color, inFirstPersonHand());
-                }
-            } else if (gl[layerIdx].simultaneous() && !chroma) {
-                for (int i = 0; i < colors.length; i++) {
-                    RenderType rt = CustomGlintRenderer.forGlint(glint, layerIdx, false, i);
-                    if (rt != null) collector.submitModelPart(part, pose, rt, light, OverlayTexture.NO_OVERLAY,
-                            null, false, false, CustomGlintRenderer.packAdjustedColor(glint, layerIdx, colors[i]), null, 0);
-                }
-            } else {
-                int color = CustomGlintRenderer.computeAnimatedColor(glint, layerIdx);
-                // Chromatic takes the standardized special-item scale (matches the shader overlay on/off a
-                // pack); normal glint keeps the 3D scale (isItem=false → big, readable design).
-                RenderType rt = chroma ? CustomGlintRenderer.forChromaticSpecialGlint(glint, layerIdx)
-                                       : CustomGlintRenderer.forGlint(glint, layerIdx, false, 0);
-                if (rt != null) collector.submitModelPart(part, pose, rt, light, OverlayTexture.NO_OVERLAY,
-                        null, false, false, color, null, 0);
-            }
-        }
-    }
-
-    /**
-     * {@link Model} variant of {@link #submitSpecialPartGlint} for special-renderer
-     * items that draw via a {@code submitModel} (shield). The {@code state} is re-applied at draw via
-     * {@code model.setupAnim(state)} (e.g. {@code Unit.INSTANCE} for the shield), exactly as
-     * {@code ModelFeatureRenderer.renderModel} does for the base model.
+     * Submits the glint for a special-renderer 3D item (shield, trident; in 26.2 a single-part item like the
+     * trident submits a {@code Model.Simple} through {@code submitModel} too), one model node per glint
+     * layer/colour into the item glint RenderType ({@code isItem=false} → 3D scale), so the glint follows the
+     * model shape. The submit-node analog of the quad-item {@code getFoilBuffer} replacement: vanilla foil is
+     * gated on enchantment, but a glinted item need not be enchanted, so we draw our own glint geometry
+     * independently. Called from {@code SubmitNodeCollectionMixin} during the special renderer's submit (item
+     * glint context active). The {@code state} is re-applied at draw via {@code model.setupAnim(state)}
+     * ({@code Unit.INSTANCE} for shield/trident), exactly as {@code ModelFeatureRenderer} does for the base model.
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static void submitSpecialModelGlint(SubmitNodeCollector collector,
+    public static void submitSpecialModelGlint(OrderedSubmitNodeCollector collector,
             Model model, Object state, PoseStack pose, int light, CustomGlint.Data glint) {
-        // Special submitModel/submitModelPart items (shield, trident) render their glint at the 3D scale
+        // Special submitModel items (shield, trident) render their glint at the 3D scale
         // (forGlint isItem=false → 1.0), the largest / most readable design. Higher scale values TILE the
         // design more densely (smaller), so the old ×4 pre-scale (SPECIAL_MODEL_PATTERN_SCALE) made the
         // shield's design far too small; it was removed. patternScale (the wand/menu slider) tunes from here.
@@ -312,8 +267,8 @@ public final class EntityGlintRender {
 
     /**
      * One queued held/dropped item glow outline: the item's baked quads, the camera-relative
-     * {@code ItemSubmit} pose snapshot, light, and the resolved animated glow colour. Captured during
-     * {@code ItemFeatureRenderer.renderItem} (see {@code ItemRendererMixin}) and replayed in the same
+     * {@code ItemFeatureRenderer.Submit} pose snapshot, light, and the resolved animated glow colour. Captured during
+     * {@code ItemFeatureRenderer.prepareSubmit} (see {@code ItemRendererMixin}) and replayed in the same
      * {@link #drainBodyOutlines()} pass as entity bodies so the item silhouette joins the unioned ring
      * and shares the single fullscreen composite. Items render as a list of {@link BakedQuad}s, not an
      * {@link EntityModel}, so there's no setupAnim to re-apply, the quads are self-contained.
@@ -350,7 +305,7 @@ public final class EntityGlintRender {
     // silhouettes (two nearby swords → one blob; two overlapping players → one ring). Group keys:
     //   - entity body + that entity's worn armor → the entity RENDER STATE identity (so one creature reads
     //     as a single outline, but two players/mobs stay separate).
-    //   - each held/dropped/special item → its own group (per-item submit token / ItemSubmit identity).
+    //   - each held/dropped/special item → its own group (per-item submit token / item Submit identity).
 
     /**
      * One queued model-based glow outline: a posed {@link Model} (worn armor,
@@ -382,33 +337,17 @@ public final class EntityGlintRender {
         }
     }
 
-    /** One queued model-part glow outline for special-renderer 3D items that submit a single
-     *  {@link ModelPart} (e.g. trident). White.png silhouette. */
-    private static final class PartOutlineJob {
-        final ModelPart part;
-        final PoseStack.Pose pose;
-        final int light;
-        final int color;
-        final Object group;
-        PartOutlineJob(ModelPart part, PoseStack.Pose pose, int light,
-                       int color, Object group) {
-            this.part = part; this.pose = pose; this.light = light; this.color = color; this.group = group;
-        }
-    }
-
     private static final List<ModelOutlineJob> MODEL_OUTLINES = new ArrayList<>();
-    private static final List<PartOutlineJob> PART_OUTLINES = new ArrayList<>();
-    /** First-person held SPECIAL/3D items (shield → submitModel, trident → submitModelPart), kept OUT of
-     *  {@link #MODEL_OUTLINES}/{@link #PART_OUTLINES} for the same reason as {@link #HELD_FP_OUTLINES}:
+    /** First-person held SPECIAL/3D items (shield, trident, all via submitModel), kept OUT of
+     *  {@link #MODEL_OUTLINES} for the same reason as {@link #HELD_FP_OUTLINES}:
      *  their pose is hand-local, so the world drain would float the ring ~1 block off the item (worst under
      *  Iris, which renders the hand mid-framegraph). Routed here when {@link #inFirstPersonHand()} (set
-     *  across {@code ItemInHandRenderer.renderHandsWithItems}, which both the vanilla and Iris hand paths
+     *  across {@code ItemInHandRenderer.submitHandsWithItems}, which both the vanilla and Iris hand paths
      *  call); drained only by the hand-projection drain. See the TRIED history in {@code GameRendererMixin}. */
     private static final List<ModelOutlineJob> HELD_FP_MODEL_OUTLINES = new ArrayList<>();
-    private static final List<PartOutlineJob> HELD_FP_PART_OUTLINES = new ArrayList<>();
 
-    /** True only while {@code ItemInHandRenderer.renderHandsWithItems} runs (set by
-     *  {@code ItemInHandRendererMixin}). Render thread only, a plain flag like {@code SubmitNodeStorageMixin}'s
+    /** True only while {@code ItemInHandRenderer.submitHandsWithItems} runs (set by
+     *  {@code ItemInHandRendererMixin}). Render thread only, a plain flag like {@code SubmitNodeCollectionMixin}'s
      *  {@code cg_addingGlint}. Special-item outline queues consult it to route first-person hand items to the
      *  hand-only queues above. */
     private static boolean inFirstPersonHand = false;
@@ -420,7 +359,6 @@ public final class EntityGlintRender {
      *  merges with another group's. See the grouping comment in {@link #drainBodyOutlines()}. */
     private static final class Group {
         final List<ModelOutlineJob> models = new ArrayList<>();
-        final List<PartOutlineJob> parts = new ArrayList<>();
         final List<ItemOutlineJob> items = new ArrayList<>();
     }
 
@@ -456,7 +394,7 @@ public final class EntityGlintRender {
      * Queues a special-renderer 3D item's glow outline (shield, etc., items submitted as a
      * {@code submitModel} during {@code ItemStackRenderState} submit rather than as baked quads). Uses a
      * white.png silhouette (full model shape) since these have no single sprite texture to alpha-discard
-     * against, the 1.21.1 BEWLR approach. See {@code SubmitNodeStorageMixin}.
+     * against, the 1.21.1 BEWLR approach. See {@code SubmitNodeCollectionMixin}.
      */
     @SuppressWarnings("rawtypes")
     public static void queueSpecialModelOutline(Model model, Object state,
@@ -472,21 +410,6 @@ public final class EntityGlintRender {
         (inFirstPersonHand ? HELD_FP_MODEL_OUTLINES : MODEL_OUTLINES).add(job);
     }
 
-    /** {@link ModelPart} variant of {@link #queueSpecialModelOutline}
-     *  for special items that submit a single part (e.g. trident). White.png silhouette. */
-    public static void queueSpecialPartOutline(ModelPart part,
-            PoseStack.Pose pose, int light, @Nullable CustomGlint.Data glint, boolean glowing, int[] glowColors,
-            float glowSpeed, boolean glowInterp) {
-        if (part == null || pose == null) return;
-        if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate ring
-        if (!GlintClientConfig.itemOutlines() || beyondOutlineDistance(pose)) return;
-        int[] gc = glowColors == null ? new int[0] : glowColors;
-        if (!glowing && gc.length == 0) return;
-        PartOutlineJob job = new PartOutlineJob(part, pose.copy(), light, resolveOutlineColor(glint, gc, glowSpeed, glowInterp),
-                itemGroup());
-        (inFirstPersonHand ? HELD_FP_PART_OUTLINES : PART_OUTLINES).add(job);
-    }
-
     /** Group key for a special item's sub-model submits: the per-item submit token (so one shield's
      *  base + patterns + foil merge into one ring), or a fresh token if none is active. */
     private static Object itemGroup() {
@@ -496,12 +419,12 @@ public final class EntityGlintRender {
 
     /**
      * Queues a held/dropped item's glow outline for the {@link #drainBodyOutlines()} pass. Called from
-     * {@code ItemRendererMixin} at the draw of each glowing {@code ItemSubmit} node (3rd-person held
+     * {@code ItemRendererMixin} at the draw of each glowing {@code ItemFeatureRenderer.Submit} node (3rd-person held
      * items, dropped item entities, item frames, anything routed through {@code ItemFeatureRenderer}
      * in the framegraph main pass). The glow colour resolves like the entity ring: glowColors first,
      * then glint layer 0, else white. No-op when the item neither glows nor has glow colours.
      *
-     * @param heldFirstPerson true for the first-person hand item (the {@code ItemSubmit}'s
+     * @param heldFirstPerson true for the first-person hand item (the {@code ItemFeatureRenderer.Submit}'s
      *     {@code displayContext.firstPerson()}). Such jobs go to {@link #HELD_FP_OUTLINES} so the world
      *     drain never composites their view-space pose against the world projection.
      */
@@ -530,6 +453,11 @@ public final class EntityGlintRender {
      *  thin each source's ring with distance. */
     private static TextureTarget maskTarget;
     private static TextureTarget ringTarget;
+    /** Transparent black, the clear for every isolated colour target. */
+    private static final Vector4fc CLEAR = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+    /** The FAR depth clear. 26.2 renders reversed-Z (near = 1, far = 0, tests are GREATER_THAN_OR_EQUAL), so
+     *  far is 0.0, not the 1.0 of earlier versions. */
+    private static final double CLEAR_DEPTH = 0.0;
     /** First-person hand projection matrix (captured by GameRendererMixin at renderItemInHand HEAD).
      *  Combined with the live modelview in the FP drain to scissor the held-item composite to its
      *  silhouette instead of running it full-screen. Null until first captured. */
@@ -554,7 +482,7 @@ public final class EntityGlintRender {
     // program for one of its own and the glint goes flat white (the chromatic analog of the GLINT_COLOR
     // white bug, but unfixable by IrisCompat.assignPipeline: no pack program can recreate an oil-slick).
     // So under a pack the chromatic chokepoints queue the model here instead of submitting it, and the
-    // queue is re-rendered AFTER Iris finishes the frame (renderLevel TAIL, via LevelRendererMixin, inside
+    // queue is re-rendered AFTER Iris finishes the frame (LevelRenderer.render TAIL, via LevelRendererMixin, inside
     // the same camera-view modelview push the glow drain uses) onto an isolated target, then composited
     // back with the GLINT blend. Occlusion is decided in-shader against the committed scene depth
     // (GlintPipelines.CHROMATIC_OVERLAY / core/chromatic_overlay.fsh), so the re-render doesn't need its
@@ -586,7 +514,7 @@ public final class EntityGlintRender {
         }
     }
 
-    /** One queued ITEM overlay job: the item's baked quads, the camera-relative {@code ItemSubmit} pose
+    /** One queued ITEM overlay job: the item's baked quads, the camera-relative {@code ItemFeatureRenderer.Submit} pose
      *  snapshot (hand-local for the first-person queue), light, the layer to draw, and its per-colour index
      *  + tint colour. The cutout RenderType is resolved per quad at drain time from the quad's own sprite
      *  atlas (item sprites can live on different atlases), so the job carries the glint + layer index, not a
@@ -607,25 +535,9 @@ public final class EntityGlintRender {
         }
     }
 
-    /** One queued chromatic special-item part overlay (trident, a single {@code ModelPart}). White-dummy
-     *  cutout (full model shape), like the glow part path. */
-    private static final class ChromaPartJob {
-        final ModelPart part;
-        final PoseStack.Pose pose;
-        final RenderType rt;
-        final int light;
-        final int color;
-        ChromaPartJob(ModelPart part, PoseStack.Pose pose, RenderType rt, int light, int color) {
-            this.part = part; this.pose = pose; this.rt = rt; this.light = light; this.color = color;
-        }
-    }
-
     private static final List<ChromaModelJob> CHROMA_MODELS = new ArrayList<>();
     /** First-person held chromatic special MODELS (shield), hand-local pose; drained only at the hand point. */
     private static final List<ChromaModelJob> HELD_FP_CHROMA_MODELS = new ArrayList<>();
-    private static final List<ChromaPartJob> CHROMA_PARTS = new ArrayList<>();
-    /** First-person held chromatic special PARTS (trident), hand-local pose; drained only at the hand point. */
-    private static final List<ChromaPartJob> HELD_FP_CHROMA_PARTS = new ArrayList<>();
     private static final List<ChromaItemJob> CHROMA_ITEMS = new ArrayList<>();
     /** First-person held chromatic items, kept OUT of {@link #CHROMA_ITEMS} for the same reason as
      *  {@link #HELD_FP_OUTLINES}: their pose is hand-local, so the world drain would project it against the
@@ -649,13 +561,6 @@ public final class EntityGlintRender {
     public static void queueChromaticModel(Model model, Object state, PoseStack.Pose pose, RenderType rt, int light,
                                            boolean heldFirstPerson, RenderType depthRt) {
         queueGlintOverlayModel(model, state, pose, rt, light, 0xFFFFFFFF, heldFirstPerson, depthRt);
-    }
-
-    /** Queues a chromatic special-item part (trident) for the post-Iris overlay drain. Called from
-     *  {@link #submitSpecialPartGlint} only when a shader pack is active. */
-    public static void queueChromaticPart(ModelPart part, PoseStack.Pose pose, RenderType rt, int light,
-                                          boolean heldFirstPerson) {
-        queueGlintOverlayPart(part, pose, rt, light, 0xFFFFFFFF, heldFirstPerson);
     }
 
     /** Queues a chromatic flat/quad item (held or dropped) for the post-Iris overlay drain. Called from
@@ -694,15 +599,6 @@ public final class EntityGlintRender {
         (heldFirstPerson ? HELD_FP_CHROMA_MODELS : CHROMA_MODELS).add(job);
     }
 
-    /** Queues a normal-glint special-item part (trident) for the post-Iris overlay drain. */
-    public static void queueGlintOverlayPart(ModelPart part, PoseStack.Pose pose, RenderType rt, int light,
-                                             int color, boolean heldFirstPerson) {
-        if (part == null || pose == null || rt == null) return;
-        if (CustomGlintRenderer.isInShadowPass()) return;   // shadow-pass pose ⇒ detached duplicate overlay
-        ChromaPartJob job = new ChromaPartJob(part, pose.copy(), rt, light, color);
-        (heldFirstPerson ? HELD_FP_CHROMA_PARTS : CHROMA_PARTS).add(job);
-    }
-
     /** Queues a normal-glint flat/quad item (held, dropped, or a block-model entity layer) for the post-Iris
      *  overlay drain. The drain resolves {@code forItemGlintOverlayNormal(glint, layerIdx, colorIdx, atlas)}
      *  per quad and tints it with {@code color}. */
@@ -717,7 +613,7 @@ public final class EntityGlintRender {
     /**
      * Re-renders the queued chromatic models + items AFTER Iris has finished the frame, onto an isolated
      * full-res target, then composites the result onto the main target. The world drain
-     * ({@code firstPerson == false}, {@code LevelRendererMixin} renderLevel TAIL) draws worn equipment,
+     * ({@code firstPerson == false}, {@code LevelRendererMixin} LevelRenderer.render TAIL) draws worn equipment,
      * entity bodies, and 3rd-person/dropped items, inside the camera-view modelview push. The hand drain
      * ({@code firstPerson == true}, {@code GameRendererMixin} renderItemInHand RETURN) draws only the
      * first-person held item(s), with the hand projection + bob modelview in place. Always clears the
@@ -725,15 +621,14 @@ public final class EntityGlintRender {
      */
     public static void drainChromaticOverlays(boolean firstPerson) {
         List<ChromaModelJob> modelJobs = firstPerson ? HELD_FP_CHROMA_MODELS : CHROMA_MODELS;
-        List<ChromaPartJob> partJobs = firstPerson ? HELD_FP_CHROMA_PARTS : CHROMA_PARTS;
         List<ChromaItemJob> itemJobs = firstPerson ? HELD_FP_CHROMA_ITEMS : CHROMA_ITEMS;
-        if (modelJobs.isEmpty() && partJobs.isEmpty() && itemJobs.isEmpty()) return;
+        if (modelJobs.isEmpty() && itemJobs.isEmpty()) return;
         Minecraft mc = Minecraft.getInstance();
-        RenderTarget main = mc.getMainRenderTarget();
-        if (main == null) { modelJobs.clear(); partJobs.clear(); itemJobs.clear(); return; }
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
+        if (main == null) { modelJobs.clear(); itemJobs.clear(); return; }
         int w = Math.max(1, main.width), h = Math.max(1, main.height);
         if (chromaticTarget == null) {
-            chromaticTarget = new TextureTarget("customglint chromatic overlay", w, h, true);
+            chromaticTarget = new TextureTarget("customglint chromatic overlay", w, h, true, GpuFormat.RGBA8_UNORM);
         } else if (chromaticTarget.width != w || chromaticTarget.height != h) {
             chromaticTarget.resize(w, h);
         }
@@ -743,13 +638,12 @@ public final class EntityGlintRender {
         // cleared to far so the wing depth pre-pass (WING_DEPTH, LEQUAL + write) accumulates the nearest wing
         // from a clean slate and the wing colour pass (now LEQUAL) tests against it.
         RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
-                chromaticTarget.getColorTexture(), 0, chromaticTarget.getDepthTexture(), 1.0);
+                chromaticTarget.getColorTexture(), CLEAR, chromaticTarget.getDepthTexture(), CLEAR_DEPTH);
         try {
             RenderSystem.outputColorTextureOverride = chromaticTarget.getColorTextureView();
             RenderSystem.outputDepthTextureOverride = chromaticTarget.getDepthTextureView();
-            MultiBufferSource.BufferSource bs = mc.renderBuffers().bufferSource();
-            Set<RenderType> used = new LinkedHashSet<>();
-            // Wing depth pre-pass RTs (folded elytra/cape): flushed BEFORE `used` so the isolated depth holds
+            GlintBatch bs = CustomGlintRenderer.overlayBatch();
+            // Wing depth pre-pass RTs (folded elytra/cape): flushed BEFORE the colour RTs so the isolated depth holds
             // the nearest wing before any wing colour LEQUAL-tests against it. Colour is a GLINT-blend no-op.
             Set<RenderType> prepass = new LinkedHashSet<>();
             // One scratch PoseStack reused across every job: each iteration fully overwrites last() before
@@ -769,12 +663,6 @@ public final class EntityGlintRender {
                 // job.color is white for chromatic (palette carries the colours) and the layer's animated
                 // colour for a normal-glint overlay (read by core/glint_overlay.fsh's per-vertex Color).
                 job.model.renderToBuffer(scratch, bs.getBuffer(job.rt), job.light, OverlayTexture.NO_OVERLAY, job.color);
-                used.add(job.rt);
-            }
-            for (ChromaPartJob job : partJobs) {
-                scratch.last().set(job.pose);
-                job.part.render(scratch, bs.getBuffer(job.rt), job.light, OverlayTexture.NO_OVERLAY, job.color);
-                used.add(job.rt);
             }
             // Reused across jobs: overlay coord is constant; colour + light are set per job below.
             QuadInstance qi = new QuadInstance();
@@ -792,18 +680,16 @@ public final class EntityGlintRender {
                             : CustomGlintRenderer.forItemGlintOverlayNormal(job.glint, job.layerIdx, job.colorIdx, atlas);
                     if (rt == null) continue;
                     bs.getBuffer(rt).putBakedQuad(job.pose, quad, qi);
-                    used.add(rt);
                 }
             }
             // Depth first (writes the nearest wing into the isolated depth), then colour (wing pass LEQUAL-tests
             // against it; non-wing/part/item RTs keep ALWAYS and ignore it).
-            for (RenderType rt : prepass) bs.endBatch(rt);
-            for (RenderType rt : used) bs.endBatch(rt);
+            bs.flush(prepass);
         } finally {
+            CustomGlintRenderer.overlayBatch().discard(); // a job that threw leaves its vertices staged
             RenderSystem.outputColorTextureOverride = null;
             RenderSystem.outputDepthTextureOverride = null;
             modelJobs.clear();
-            partJobs.clear();
             itemJobs.clear();
         }
         CustomGlintRenderer.compositeChromatic(chromaticTarget.getColorTextureView(), main.getColorTextureView());
@@ -813,7 +699,7 @@ public final class EntityGlintRender {
      * Drains the per-frame body-outline queue using the isolated silhouette-target pipeline (the 26.1
      * replacement for the dead-end per-pixel-depth stencil band ring the 1.20.1/1.21.1 builds used).
      * Called from {@code RenderLevelStageEvent.AfterWeather} off the shader path, or {@code
-     * LevelRendererMixin} (renderLevel TAIL) under an active Iris pack
+     * LevelRendererMixin} (LevelRenderer.render TAIL) under an active Iris pack
      * (all solid bodies committed to depth, no open render pass).
      *
      * Per entity, ONE un-dilated silhouette render into {@code maskTarget}, marking its whole outer
@@ -850,11 +736,10 @@ public final class EntityGlintRender {
         // a world queue and a hand-only queue.
         List<ItemOutlineJob> itemJobs = allowScissor ? ITEM_OUTLINES : HELD_FP_OUTLINES;
         List<ModelOutlineJob> modelJobs = allowScissor ? MODEL_OUTLINES : HELD_FP_MODEL_OUTLINES;
-        List<PartOutlineJob> partJobs = allowScissor ? PART_OUTLINES : HELD_FP_PART_OUTLINES;
         if (itemJobs.isEmpty()
-                && modelJobs.isEmpty() && partJobs.isEmpty() && !hasBodyGlow) return;
+                && modelJobs.isEmpty() && !hasBodyGlow) return;
         Minecraft mc = Minecraft.getInstance();
-        RenderTarget main = mc.getMainRenderTarget();
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
         if (main == null) { clearBodyOutlineQueue(); return; }
         // Outline resolution divisor: the client config's outlineRenderScale (1 = full res; higher = softer
         // outline, less GPU fill, the weak-GPU lever). Read fresh each drain so the in-game config screen and
@@ -863,7 +748,7 @@ public final class EntityGlintRender {
         final int DOWNSCALE = GlintClientConfig.outlineRenderScale();
         int w = Math.max(1, main.width / DOWNSCALE), h = Math.max(1, main.height / DOWNSCALE);
         if (maskTarget == null) {
-            maskTarget = new TextureTarget("customglint glow mask", w, h, true);
+            maskTarget = new TextureTarget("customglint glow mask", w, h, true, GpuFormat.RGBA8_UNORM);
         } else if (maskTarget.width != w || maskTarget.height != h) {
             maskTarget.resize(w, h);
         }
@@ -873,7 +758,7 @@ public final class EntityGlintRender {
         // upscale pass + its clear entirely.
         if (DOWNSCALE != 1) {
             if (ringTarget == null) {
-                ringTarget = new TextureTarget("customglint glow ring", w, h, false);
+                ringTarget = new TextureTarget("customglint glow ring", w, h, false, GpuFormat.RGBA8_UNORM);
             } else if (ringTarget.width != w || ringTarget.height != h) {
                 ringTarget.resize(w, h);
             }
@@ -891,7 +776,6 @@ public final class EntityGlintRender {
         Map<Object, Group> groups = new LinkedHashMap<>();
         for (ModelOutlineJob j : modelJobs)
             groups.computeIfAbsent((j.entityBound && !j.ownGroup) ? ENTITY_GROUP : j.group, k -> new Group()).models.add(j);
-        for (PartOutlineJob j : partJobs) groups.computeIfAbsent(j.group, k -> new Group()).parts.add(j);
         for (ItemOutlineJob j : itemJobs) groups.computeIfAbsent(j, k -> new Group()).items.add(j);
         // Entity bodies are captured in-phase (ModelFeatureRendererMixin → CustomGlintRenderer.fanBodyGlow),
         // not as jobs, ensure the shared entity group is processed so its silhouette buffer gets flushed,
@@ -904,7 +788,7 @@ public final class EntityGlintRender {
         // pose's translation column) to clip space, the matrix the mask draws themselves project with.
         // Used to size each group's scissor. Null on the first-person drain (no world-space scissor).
         Matrix4f vrp = allowScissor
-                ? mc.gameRenderer.getMainCamera().getViewRotationProjectionMatrix(new Matrix4f())
+                ? mc.gameRenderer.mainCamera().getViewRotationProjectionMatrix(new Matrix4f())
                 : null;
         // First-person hand drain (allowScissor == false): the held item's geometry is in the hand pose's
         // space; the glow-mask shader draws it with ProjMat*ModelViewMat = the captured hand projection ×
@@ -912,7 +796,7 @@ public final class EntityGlintRender {
         // silhouette instead of running full-screen (the reported 1st-person glow cost). Null until the hand
         // projection has been captured (GameRendererMixin), in which case the composite stays full-screen.
         Matrix4f fpMvp = (!allowScissor && firstPersonProjection != null)
-                ? new Matrix4f(firstPersonProjection).mul(RenderSystem.getModelViewMatrix())
+                ? new Matrix4f(firstPersonProjection).mul(RenderSystem.getModelViewMatrixCopy())
                 : null;
 
         for (Group g : groups.values()) {
@@ -941,22 +825,21 @@ public final class EntityGlintRender {
             // clear (not the composite scissor) keeps the ring tight while killing the cross-group bleed.
             if (rect == null) {
                 RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
-                        maskTarget.getColorTexture(), 0, maskTarget.getDepthTexture(), 1.0);
+                        maskTarget.getColorTexture(), CLEAR, maskTarget.getDepthTexture(), CLEAR_DEPTH);
             } else {
                 int[] cr = inflateRect(rect, MASK_CLEAR_PAD, main.width, main.height);
                 RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
-                        maskTarget.getColorTexture(), 0, maskTarget.getDepthTexture(), 1.0,
+                        maskTarget.getColorTexture(), CLEAR, maskTarget.getDepthTexture(), CLEAR_DEPTH,
                         cr[0], cr[1], cr[2], cr[3]);
             }
             if (DOWNSCALE != 1) {
-                RenderSystem.getDevice().createCommandEncoder().clearColorTexture(ringTarget.getColorTexture(), 0);
+                RenderSystem.getDevice().createCommandEncoder().clearColorTexture(ringTarget.getColorTexture(), CLEAR);
             }
             // Track the ACTUAL silhouette geometry this group emits (AABBTrackingConsumer fills
             // CustomGlintRenderer.glowMaskBox during the accumulate* calls below) so the composite can
             // scissor to the real shape instead of the loose pose-origin box, near-fullscreen for a close
             // object such as a 3rd-person player in glowing armor.
             CustomGlintRenderer.resetGlowMaskBox();
-            Set<Identifier> textures = new LinkedHashSet<>();
             // One scratch PoseStack reused across both job loops in this group: each iteration overwrites
             // last() before the accumulate* call renders it synchronously (those helpers don't retain the
             // PoseStack), so a fresh allocation per job is avoidable churn.
@@ -976,28 +859,17 @@ public final class EntityGlintRender {
                         : CustomGlintRenderer.glowKeyFor(job.group, itemCat);
                 CustomGlintRenderer.accumulateGlowMask(scratch, job.model,
                         CustomGlintRenderer.glowMaskRT(job.texture), job.light, job.color, glowKey);
-                textures.add(job.texture);
-            }
-            // Special-renderer items (e.g. trident), white.png full-shape silhouette. Every part of one
-            // item submit shares the submit-token group, so they merge into ONE outline (not boxes).
-            for (PartOutlineJob job : g.parts) {
-                scratch.last().set(job.pose);
-                CustomGlintRenderer.accumulatePartGlowMask(scratch, job.part,
-                        CustomGlintRenderer.glowMaskRT(WHITE), job.light, job.color,
-                        CustomGlintRenderer.glowKeyFor(job.group,
-                                allowScissor ? CustomGlintRenderer.CAT_ITEM : CustomGlintRenderer.CAT_HELD_FP));
-                textures.add(WHITE);
             }
             // Quad items: re-emit per sprite atlas; no setupAnim, item quads are self-contained.
             for (ItemOutlineJob job : g.items) {
-                CustomGlintRenderer.accumulateItemGlowMask(job.pose, job.quads, job.light, job.color, textures,
+                CustomGlintRenderer.accumulateItemGlowMask(job.pose, job.quads, job.light, job.color,
                         allowScissor ? CustomGlintRenderer.CAT_ITEM : CustomGlintRenderer.CAT_HELD_FP);
             }
             try {
                 // Group's combined mask (shape + visibility in alpha) → mask target: one draw per texture.
                 RenderSystem.outputColorTextureOverride = maskTarget.getColorTextureView();
                 RenderSystem.outputDepthTextureOverride = maskTarget.getDepthTextureView();
-                for (Identifier tex : textures) CustomGlintRenderer.flushGlowRT(CustomGlintRenderer.glowMaskRT(tex));
+                CustomGlintRenderer.flushGlowMask();
                 // In-phase entity-body silhouettes (vanilla-parity capture) draw into the SAME mask, so
                 // body + worn armor compose as one ring.
                 if (isEntityGroup && hasBodyGlow) CustomGlintRenderer.flushBodyGlow();
@@ -1061,7 +933,6 @@ public final class EntityGlintRender {
             // mid-drain exception can't leave stale jobs/buffers for the next frame.
             itemJobs.clear();
             modelJobs.clear();
-            partJobs.clear();
             CustomGlintRenderer.resetBodyGlow();
         }
     }
@@ -1240,20 +1111,19 @@ public final class EntityGlintRender {
     private static List<PoseStack.Pose> nonBodyPoses(Group g) {
         List<PoseStack.Pose> poses = new ArrayList<>();
         for (ModelOutlineJob j : g.models) poses.add(j.pose);
-        for (PartOutlineJob j : g.parts) poses.add(j.pose);
         for (ItemOutlineJob j : g.items) poses.add(j.pose);
         return poses;
     }
 
     // ── Translucent-layer in-phase glint (off shader-pack): stable-depth draw ───────────────────
     //
-    // A translucent entity shell (slime outer cube = entity_translucent) goes into 26.1's distance-SORTED
+    // A translucent entity shell (slime outer cube = entity_translucent) goes into the distance-SORTED
     // translucent bucket, and so does our glint (GLINT blend). The two tie in that sort at the same position,
     // so the glint keeps swapping order with the shell and ends up depth-testing against the shell's OWN
     // re-sorted depth → per-frame flicker (opaque layers like sheep wool don't: their solid depth is stable).
-    // Fix: DON'T submit the translucent-layer glint into that bucket. Stash it during submit, then draw it at
-    // the HEAD of ModelFeatureRenderer.renderTranslucent, after every opaque surface (terrain + solid entity
-    // bodies) has committed its depth, but BEFORE any translucent shell draws. The glint then LEQUAL-tests
+    // Fix: DON'T submit the translucent-layer glint into that bucket. Stash it during submit and draw it at
+    // AfterWeather, on top of the shell, testing against a depth snapshot taken after every opaque surface (terrain + solid entity
+    // bodies) has committed its depth but BEFORE any translucent shell draws. The glint then occlusion-tests
     // against that STABLE opaque depth (the 26.1 analog of the 1.21.1 OPAQUE_DECAL fix), rock-steady. Under a
     // shader pack the overlay path already tests against captured scene depth, so this only runs off a pack.
 
@@ -1290,7 +1160,7 @@ public final class EntityGlintRender {
         return state != null && TRANSLUCENT_SHELL_STATES.containsKey(state);
     }
 
-    /** True if any translucent-layer glint is stashed this frame (so the renderTranslucent-HEAD hook only
+    /** True if any translucent-layer glint is stashed this frame (so the AfterOpaqueFeatures snapshot only
      *  pays for the opaque-depth snapshot when there's actually a slime-shell glint to draw). */
     public static boolean hasTranslucentLayerGlints() { return !TRANSLUCENT_LAYER_GLINTS.isEmpty(); }
 
@@ -1305,18 +1175,18 @@ public final class EntityGlintRender {
     }
 
     /**
-     * Snapshots the main depth at {@code renderTranslucent} HEAD, when every opaque surface (terrain + solid
+     * Snapshots the main depth at {@code AfterOpaqueFeatures}, when every opaque surface (terrain + solid
      * entity bodies) has committed but no translucent shell has drawn yet. The snapshot is bound under
      * {@code CustomGlintRenderer.SOLID_DEPTH_ID}; the translucent-layer glint (drawn on top at TAIL) occludes
-     * against THIS stable depth instead of the shell's re-sorted depth. Called by {@code ModelFeatureRendererMixin}.
+     * against THIS stable depth instead of the shell's re-sorted depth. Called from {@code CustomGlintClientInit}.
      */
     public static void captureSolidDepth() {
         Minecraft mc = Minecraft.getInstance();
-        RenderTarget main = mc.getMainRenderTarget();
+        RenderTarget main = mc.gameRenderer.mainRenderTarget();
         if (main == null) return;
         int w = Math.max(1, main.width), h = Math.max(1, main.height);
         if (solidDepthTarget == null) {
-            solidDepthTarget = new TextureTarget("customglint solid depth", w, h, true);
+            solidDepthTarget = new TextureTarget("customglint solid depth", w, h, true, GpuFormat.RGBA8_UNORM);
         } else if (solidDepthTarget.width != w || solidDepthTarget.height != h) {
             solidDepthTarget.resize(w, h);
         }
@@ -1329,13 +1199,13 @@ public final class EntityGlintRender {
      * translucent pass), ON TOP of the shell so they read clearly instead of being washed out beneath it,
      * while the RenderType's in-shader occlusion tests against the stable opaque-depth snapshot
      * ({@code captureSolidDepth}) so the design is steady, not fighting the shell's re-sorted depth. Draws
-     * in-place through the live buffer source. Off the shader path only.
+     * straight into the main target. Off the shader path only.
      */
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public static void drainTranslucentLayerGlints(MultiBufferSource.BufferSource bs) {
+    public static void drainTranslucentLayerGlints() {
         if (TRANSLUCENT_LAYER_GLINTS.isEmpty()) return;
         PoseStack scratch = new PoseStack();
-        Set<RenderType> used = new LinkedHashSet<>();
+        GlintBatch bs = CustomGlintRenderer.overlayBatch();
         try {
             for (TranslucentLayerJob job : TRANSLUCENT_LAYER_GLINTS) {
                 scratch.last().set(job.pose);
@@ -1349,7 +1219,6 @@ public final class EntityGlintRender {
                         RenderType rt = CustomGlintRenderer.forEntityLayerChromaticSolid(job.glint, layerIdx);
                         if (rt != null) {
                             job.model.renderToBuffer(scratch, bs.getBuffer(rt), job.light, OverlayTexture.NO_OVERLAY, 0xFFFFFFFF);
-                            used.add(rt);
                         }
                     } else if (gl[layerIdx].simultaneous()) {
                         for (int i = 0; i < colors.length; i++) {
@@ -1357,7 +1226,6 @@ public final class EntityGlintRender {
                             if (rt != null) {
                                 job.model.renderToBuffer(scratch, bs.getBuffer(rt), job.light, OverlayTexture.NO_OVERLAY,
                                         CustomGlintRenderer.packAdjustedColor(job.glint, layerIdx, colors[i]));
-                                used.add(rt);
                             }
                         }
                     } else {
@@ -1365,13 +1233,13 @@ public final class EntityGlintRender {
                         RenderType rt = CustomGlintRenderer.forEntityTranslucentLayerGlint(job.glint, layerIdx, 0);
                         if (rt != null) {
                             job.model.renderToBuffer(scratch, bs.getBuffer(rt), job.light, OverlayTexture.NO_OVERLAY, color);
-                            used.add(rt);
                         }
                     }
                 }
             }
-            for (RenderType rt : used) bs.endBatch(rt);
+            bs.flush();
         } finally {
+            bs.discard(); // a job that threw leaves its vertices staged
             TRANSLUCENT_LAYER_GLINTS.clear();
         }
     }
@@ -1383,13 +1251,9 @@ public final class EntityGlintRender {
         ITEM_OUTLINES.clear();
         HELD_FP_OUTLINES.clear();
         MODEL_OUTLINES.clear();
-        PART_OUTLINES.clear();
         HELD_FP_MODEL_OUTLINES.clear();
-        HELD_FP_PART_OUTLINES.clear();
         CHROMA_MODELS.clear();
         HELD_FP_CHROMA_MODELS.clear();
-        CHROMA_PARTS.clear();
-        HELD_FP_CHROMA_PARTS.clear();
         CHROMA_ITEMS.clear();
         HELD_FP_CHROMA_ITEMS.clear();
         // A first-person hand render that threw would skip endFirstPersonHand() and leave this stuck true,
@@ -1406,7 +1270,7 @@ public final class EntityGlintRender {
 
     /** Raw {@code setupAnim} on a {@link Model} of unknown render-state type
      *  (armor/special-item models carry an {@code Object} state captured at submit). Mirrors what
-     *  {@code ModelFeatureRenderer.renderModel} does before each deferred model draw. */
+     *  {@code ModelFeatureRenderer.prepareModel} does before each deferred model draw. */
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static void setupAnim(Model model, Object state) {
         if (state != null) model.setupAnim(state);
@@ -1427,13 +1291,25 @@ public final class EntityGlintRender {
      *  so the {@code toString()} + prefix scan is computed once per distinct RenderType, not per submit. */
     private static final Map<RenderType, Boolean> SURFACE_CACHE = new IdentityHashMap<>();
 
+    /** Identity cache for {@link #isOwnRenderType}, same reasoning as {@link #SURFACE_CACHE}. */
+    private static final Map<RenderType, Boolean> OWN_CACHE = new IdentityHashMap<>();
+
     /** Drops the entity-surface identity cache on resource reload (called from {@code clearTextures}). */
-    public static void clearSurfaceCache() { SURFACE_CACHE.clear(); }
+    public static void clearSurfaceCache() { SURFACE_CACHE.clear(); OWN_CACHE.clear(); }
+
+    /** True for a RenderType this mod minted (every glint/glow/overlay type is named {@code customglint:...}). */
+    public static boolean isOwnRenderType(RenderType rt) {
+        Boolean cached = OWN_CACHE.get(rt);
+        if (cached != null) return cached;
+        boolean own = rt.toString().contains(MOD_ID + ":");
+        OWN_CACHE.put(rt, own);
+        return own;
+    }
 
     /**
      * True for a vanilla entity body / {@code RenderLayer} surface RenderType (entity_cutout,
      * entity_solid, entity_translucent, entity_cutout_no_cull, …). Excludes armor (armor_*), our own
-     * glint/mask RTs, eyes, and any non-surface type, so the per-layer glint ({@code SubmitNodeStorageMixin})
+     * glint/mask RTs, eyes, and any non-surface type, so the per-layer glint ({@code SubmitNodeCollectionMixin})
      * and per-layer outline tee ({@code ModelFeatureRendererMixin}) only augment real entity geometry.
      */
     public static boolean isEntitySurface(RenderType rt) {
@@ -1448,7 +1324,7 @@ public final class EntityGlintRender {
     /**
      * Identity of the entity body model currently being submitted, set by {@code LivingEntityRendererMixin}
      * for the span of {@code LivingEntityRenderer.submit}. The body is glinted there directly; the per-layer
-     * glint hook ({@code SubmitNodeStorageMixin}) reads this back to skip the body's own {@code submitModel}
+     * glint hook ({@code SubmitNodeCollectionMixin}) reads this back to skip the body's own {@code submitModel}
      * so it isn't glinted twice. Null outside an entity submit (and for non-living renderers).
      */
     private static final ThreadLocal<Object> CURRENT_BODY_MODEL = new ThreadLocal<>();

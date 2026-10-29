@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
  * Routes a glinted item's GUI icon to the LIVE glint overlay instead of baking the glint into the cached
  * atlas slot, so the icon no longer re-renders every frame just to animate the glint.
  *
- * <p>In 26.1 {@code ItemFeatureRenderer.renderItem} only calls {@code getFoilBuffer} (where the custom
+ * <p>{@code ItemFeatureRenderer.prepareSubmit} only calls {@code getFoilBuffer} (where the custom
  * glint is injected, see {@code ItemRendererMixin}) when the layer's {@code FoilType != NONE}.
  * {@code CuboidItemModelWrapper.update} derives the foil type from {@code ItemStack.hasFoil()} and, when
  * foiled, calls {@code output.setAnimated()}, which makes the GUI item atlas discard + re-bake that icon

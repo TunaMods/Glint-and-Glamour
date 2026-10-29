@@ -37,7 +37,7 @@ public class ItemModelResolverMixin {
         CgGlintHolder holder = (CgGlintHolder) (Object) output;
         holder.customglint$setGlint(glint);
         // Glow rides the carrier independently of the glint: a Glow-Trimmed item with no glint still
-        // outlines. The deferred item draw reads these back off the ItemSubmit node to queue the ring.
+        // outlines. The deferred item draw reads these back off the item Submit node to queue the ring.
         holder.customglint$setGlowing(glowing);
         holder.customglint$setGlowColors(glowColors);
         holder.customglint$setGlowSpeed(state.glowSpeed());

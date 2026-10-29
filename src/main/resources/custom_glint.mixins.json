@@ -5,7 +5,6 @@
   "compatibilityLevel": "JAVA_25",
   "refmap": "custom_glint.mixins.refmap.json",
   "client": [
-    "BatchableBufferSourceMixin",
     "CuboidItemModelWrapperMixin",
     "EntityRendererMixin",
     "EquipmentLayerRendererMixin",
@@ -19,10 +18,8 @@
     "LevelRendererMixin",
     "LivingEntityRendererMixin",
     "ModelFeatureRendererMixin",
-    "RenderBuffersMixin",
     "SpecialModelWrapperMixin",
-    "SubmitNodeCollectionMixin",
-    "SubmitNodeStorageMixin"
+    "SubmitNodeCollectionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

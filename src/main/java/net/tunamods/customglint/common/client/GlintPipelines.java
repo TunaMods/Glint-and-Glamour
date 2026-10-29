@@ -1,5 +1,8 @@
 package net.tunamods.customglint.common.client;
 
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
@@ -10,7 +13,7 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
+import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.LayeringTransform;
 import net.minecraft.client.renderer.rendertype.OutputTarget;
@@ -37,9 +40,36 @@ import net.tunamods.customglint.common.CustomGlint;
  * vertex color (custom {@code customglint:core/glint_color} shader, POSITION_TEX_COLOR), animation
  * rides a per-draw {@link TextureTransform} supplier, and per-call-site depth state is set via
  * {@link DepthStencilState} (the stencil two-pass was removed).
+ *
+ * <p>26.2 renders reversed-Z: depth clears to 0 (far), nearer fragments have LARGER depth, and the "nearer or
+ * equal" test is {@link CompareOp#GREATER_THAN_OR_EQUAL}. Comments across the glint code still call that test
+ * "LEQUAL" (its name before 26.2, and in {@link #GLINT_LEQUAL}); read it as nearer-or-equal.
  */
 public final class GlintPipelines {
     private GlintPipelines() {}
+
+    /** {@code base.toBuilder()} with base's colour targets re-applied. NeoForge 26.2's {@code toBuilder} copies
+     *  the targets but leaves the builder's active-target count at 0, so {@code build()} swaps them for
+     *  {@code ColorTargetState.DEFAULT}: no blend. That drew the glint opaque (black with a white design) and,
+     *  with no blend, sent glint nodes to the solid phase where an EQUAL test can run before the surface. */
+    private static RenderPipeline.Builder derive(RenderPipeline base) {
+        RenderPipeline.Builder builder = base.toBuilder();
+        ColorTargetState[] targets = base.getColorTargetStates();
+        for (int i = 0; i < targets.length; i++) {
+            if (targets[i] != null) builder.withColorTargetState(i, targets[i]);
+        }
+        return builder;
+    }
+
+    /** The scene-depth sampler bound by every pass that decides occlusion in-shader. */
+    private static final BindGroupLayout DEPTH_SAMPLER = BindGroupLayout.builder().withSampler("DepthSampler").build();
+
+    /** The glow ring composite's inputs: the mask, the scene depth at the ring pixel, and the mask's own depth. */
+    private static final BindGroupLayout GLOW_COMPOSITE_SAMPLERS = BindGroupLayout.builder()
+            .withSampler("MaskSampler")
+            .withSampler("DepthSampler")
+            .withSampler("MaskDepthSampler")
+            .build();
 
     /** Custom colored-glint shader (vanilla core/glint plus a per-vertex Color so simultaneous
      *  multi-color layers batch in one draw). Files live at
@@ -61,7 +91,7 @@ public final class GlintPipelines {
      * the slot's silhouette in a flat colour (the blit's vertex colour = the glow colour) rather than the
      * item texture tinted. {@code GuiRendererMixin} blits this at 1-px offsets behind the real item.
      */
-    public static final RenderPipeline GUI_ITEM_OUTLINE = RenderPipelines.GUI_TEXTURED.toBuilder()
+    public static final RenderPipeline GUI_ITEM_OUTLINE = derive(RenderPipelines.GUI_TEXTURED)
             .withLocation(CustomGlint.res("pipeline/gui_item_outline"))
             .withFragmentShader(GUI_ITEM_OUTLINE_SHADER)
             .build();
@@ -75,12 +105,12 @@ public final class GlintPipelines {
     /** Vertex format for {@link #GUI_ITEM_GLINT}. Stock elements only: UV1/UV2 carry the per-layer
      *  animation payload (scroll scalars f,f1 and packed patternScale,guiScale) since the batched GUI
      *  draw path has no per-draw uniform hook. UV0 = atlas slot coords, Color = the animated layer colour. */
-    public static final VertexFormat GUI_GLINT_FORMAT = VertexFormat.builder()
-            .add("Position", VertexFormatElement.POSITION)
-            .add("UV0", VertexFormatElement.UV0)
-            .add("UV1", VertexFormatElement.UV1)
-            .add("UV2", VertexFormatElement.UV2)
-            .add("Color", VertexFormatElement.COLOR)
+    public static final VertexFormat GUI_GLINT_FORMAT = VertexFormat.builder(0)
+            .addAttribute("Position", GpuFormat.RGB32_FLOAT)
+            .addAttribute("UV0", GpuFormat.RG32_FLOAT)
+            .addAttribute("UV1", GpuFormat.RG16_SINT)
+            .addAttribute("UV2", GpuFormat.RG16_SINT)
+            .addAttribute("Color", GpuFormat.RGBA8_UNORM)
             .build();
 
     /**
@@ -90,12 +120,13 @@ public final class GlintPipelines {
      * the overlay squares + adds onto the icon exactly like the world glint. {@code GuiRendererMixin} emits
      * one {@code GuiItemGlintRenderState} per glint layer/colour as a glyph, so it draws on top of the icon.
      */
-    public static final RenderPipeline GUI_ITEM_GLINT = RenderPipelines.GUI_TEXTURED.toBuilder()
+    public static final RenderPipeline GUI_ITEM_GLINT = derive(RenderPipelines.GUI_TEXTURED)
             .withLocation(CustomGlint.res("pipeline/gui_item_glint"))
             .withVertexShader(GUI_ITEM_GLINT_SHADER)
             .withFragmentShader(GUI_ITEM_GLINT_SHADER)
-            .withVertexFormat(GUI_GLINT_FORMAT, VertexFormat.Mode.QUADS)
-            .withSampler("Sampler1")
+            .withVertexBinding(0, GUI_GLINT_FORMAT)
+            .withPrimitiveTopology(PrimitiveTopology.QUADS)
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
             .withColorTargetState(new ColorTargetState(BlendFunction.GLINT))
             .build();
 
@@ -110,12 +141,13 @@ public final class GlintPipelines {
      * shader pair: {@code Sampler0} = the cached item slot (silhouette mask), {@code Sampler1} = the palette
      * strip. {@code GuiItemChromaticRenderState} emits one glyph per chromatic glint layer.
      */
-    public static final RenderPipeline GUI_ITEM_CHROMATIC = RenderPipelines.GUI_TEXTURED.toBuilder()
+    public static final RenderPipeline GUI_ITEM_CHROMATIC = derive(RenderPipelines.GUI_TEXTURED)
             .withLocation(CustomGlint.res("pipeline/gui_item_chromatic"))
             .withVertexShader(GUI_CHROMATIC_SHADER)
             .withFragmentShader(GUI_CHROMATIC_SHADER)
-            .withVertexFormat(GUI_GLINT_FORMAT, VertexFormat.Mode.QUADS)
-            .withSampler("Sampler1")
+            .withVertexBinding(0, GUI_GLINT_FORMAT)
+            .withPrimitiveTopology(PrimitiveTopology.QUADS)
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
             .withColorTargetState(new ColorTargetState(BlendFunction.GLINT))
             .build();
 
@@ -132,25 +164,25 @@ public final class GlintPipelines {
      * EQUAL with no depth write, cull off. Depth/stencil/layering that vary per call site are
      * applied on the derived pipelines / setups, not here.
      */
-    public static final RenderPipeline GLINT_COLOR = RenderPipelines.GLINT.toBuilder()
+    public static final RenderPipeline GLINT_COLOR = derive(RenderPipelines.GLINT)
             .withLocation(CustomGlint.res("pipeline/glint_color"))
             .withVertexShader(GLINT_COLOR_SHADER)
             .withFragmentShader(GLINT_COLOR_SHADER)
-            .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
+            .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
             .withDepthStencilState(new DepthStencilState(CompareOp.EQUAL, false))
             .withCull(false)
             .build();
 
-    /** {@link #GLINT_COLOR} with {@link CompareOp#LESS_THAN_OR_EQUAL} depth (still no write) for entity LAYER
+    /** {@link #GLINT_COLOR} with {@link CompareOp#GREATER_THAN_OR_EQUAL} depth (still no write) for entity LAYER
      *  surfaces (sheep wool, slime outer cube, saddles, …). Those layers are drawn by a DIFFERENT pipeline than
      *  our glint and sit flush on / translucent over the base body, so an EQUAL test flickers per-fragment on
      *  the ~1 ULP depth difference between the two rasterisations (the same failure {@link #GLINT_BLOCK} hit).
      *  LEQUAL is deterministic (never flickers); paired with a toward-camera {@code VIEW_OFFSET_Z} nudge at the
      *  call site it sits the glint just in front of the layer surface. The base body keeps {@link #GLINT_COLOR}
      *  (EQUAL): it rasterises identically to its own draw, so EQUAL is stable and tighter there. */
-    public static final RenderPipeline GLINT_LEQUAL = GLINT_COLOR.toBuilder()
+    public static final RenderPipeline GLINT_LEQUAL = derive(GLINT_COLOR)
             .withLocation(CustomGlint.res("pipeline/glint_lequal"))
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build();
 
     // ── Procedural chromatic glint ───────────────────────────────────────────────
@@ -163,11 +195,11 @@ public final class GlintPipelines {
     /** Chromatic pipeline, {@link #GLINT_COLOR} with the chromatic shader pair and a second sampler
      *  ({@code Sampler1} = the palette strip; {@code Sampler0} stays bound to a 1×1 white dummy the shader
      *  never reads, satisfying the inherited binding). Same GLINT blend / EQUAL-no-write depth / no-cull. */
-    public static final RenderPipeline CHROMATIC = GLINT_COLOR.toBuilder()
+    public static final RenderPipeline CHROMATIC = derive(GLINT_COLOR)
             .withLocation(CustomGlint.res("pipeline/chromatic"))
             .withVertexShader(CHROMATIC_SHADER)
             .withFragmentShader(CHROMATIC_SHADER)
-            .withSampler("Sampler1")
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
             .build();
 
     /** Block-glint shader pair (vertex + fragment): {@link #GLINT_COLOR} plus a second sampler
@@ -179,7 +211,7 @@ public final class GlintPipelines {
      * Glint pipeline for block-model entity layers (mooshroom mushrooms, snow-golem pumpkin). Two differences
      * from {@link #GLINT_COLOR}:
      * <ul>
-     * <li><b>{@link CompareOp#LESS_THAN_OR_EQUAL} depth</b> (no write) + a {@code VIEW_OFFSET_Z} bias at the
+     * <li><b>{@link CompareOp#GREATER_THAN_OR_EQUAL} depth</b> (no write) + a {@code VIEW_OFFSET_Z} bias at the
      *     call site. The block is drawn by a DIFFERENT pipeline, so {@code EQUAL} flickers per-fragment on the
      *     ~1 ULP depth difference between the two rasterisations; LEQUAL + a toward-camera nudge sits the glint
      *     just in front instead.</li>
@@ -188,12 +220,12 @@ public final class GlintPipelines {
      *     does the cutout masking (it would tile over the whole quad plane), so the shader does it.</li>
      * </ul>
      */
-    public static final RenderPipeline GLINT_BLOCK = GLINT_COLOR.toBuilder()
+    public static final RenderPipeline GLINT_BLOCK = derive(GLINT_COLOR)
             .withLocation(CustomGlint.res("pipeline/glint_block"))
             .withVertexShader(GLINT_BLOCK_SHADER)
             .withFragmentShader(GLINT_BLOCK_SHADER)
-            .withSampler("Sampler1")
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build();
 
     /** Chromatic block-glint shader pair: {@link #CHROMATIC} plus a THIRD sampler ({@code Sampler2} = the
@@ -204,12 +236,12 @@ public final class GlintPipelines {
     /** Chromatic counterpart of {@link #GLINT_BLOCK} for chromatic glint on block-model layers: LEQUAL depth
      *  (no write) + the {@link #CHROMATIC_BLOCK_SHADER} pair + {@code Sampler2} = the block atlas, so the
      *  oil-slick is masked to the block's cutout shape exactly like {@link #GLINT_BLOCK} does for normal glint. */
-    public static final RenderPipeline CHROMATIC_BLOCK = CHROMATIC.toBuilder()
+    public static final RenderPipeline CHROMATIC_BLOCK = derive(CHROMATIC)
             .withLocation(CustomGlint.res("pipeline/chromatic_block"))
             .withVertexShader(CHROMATIC_BLOCK_SHADER)
             .withFragmentShader(CHROMATIC_BLOCK_SHADER)
-            .withSampler("Sampler2")
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER2)
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build();
 
     // ── Procedural chromatic POST-IRIS overlay ───────────────────────────────────
@@ -232,11 +264,11 @@ public final class GlintPipelines {
      *  {@code DepthSampler} (the scene depth, sampled in-shader for occlusion), and depth test {@code ALWAYS}
      *  with no write: occlusion is decided by the shader, and the geometry is re-rendered into our OWN target
      *  (whose depth attachment is unrelated to the sampled scene depth), so the GPU depth test is not used. */
-    public static final RenderPipeline CHROMATIC_OVERLAY = CHROMATIC.toBuilder()
+    public static final RenderPipeline CHROMATIC_OVERLAY = derive(CHROMATIC)
             .withLocation(CustomGlint.res("pipeline/chromatic_overlay"))
             .withVertexShader(CHROMATIC_OVERLAY_SHADER)
             .withFragmentShader(CHROMATIC_OVERLAY_SHADER)
-            .withSampler("DepthSampler")
+            .withBindGroupLayout(DEPTH_SAMPLER)
             .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
             .build();
 
@@ -251,13 +283,13 @@ public final class GlintPipelines {
      *  drops the slick out per-face, this flat 0.10-block bias absorbs it while still occluding against
      *  clearly nearer opaque geometry. Same samplers/blend/depth as {@link #CHROMATIC_OVERLAY}; only the
      *  fragment program differs. */
-    public static final RenderPipeline CHROMATIC_OVERLAY_LOOSE = CHROMATIC_OVERLAY.toBuilder()
+    public static final RenderPipeline CHROMATIC_OVERLAY_LOOSE = derive(CHROMATIC_OVERLAY)
             .withLocation(CustomGlint.res("pipeline/chromatic_overlay_loose"))
             .withFragmentShader(CHROMATIC_OVERLAY_LOOSE_SHADER)
             .build();
 
     /** {@link #CHROMATIC_OVERLAY} for thin double-sided equipment (elytra wings, capes) drawn post-Iris:
-     *  depth test {@link CompareOp#LESS_THAN_OR_EQUAL} (still no write) against the isolated target's OWN
+     *  depth test {@link CompareOp#GREATER_THAN_OR_EQUAL} (still no write) against the isolated target's OWN
      *  depth. The two folded wings overlap along the spine at near-coincident depth, which the in-shader
      *  scene occlusion (a biased inequality) can't separate, so both draw and the additive slick doubles into
      *  a bright seam. The overlay drain primes the isolated depth with the nearest surface first ({@link
@@ -268,9 +300,9 @@ public final class GlintPipelines {
      *  a MIRRORED right wing ({@code CubeListBuilder.mirror()} swaps the box corners, so its winding is
      *  reversed, which is why vanilla draws elytra {@code noCull}). Culling therefore eats the wrong faces
      *  and the wing's underside loses its glint entirely. Do not re-enable cull on any wing pipeline. */
-    public static final RenderPipeline CHROMATIC_OVERLAY_WING = CHROMATIC_OVERLAY.toBuilder()
+    public static final RenderPipeline CHROMATIC_OVERLAY_WING = derive(CHROMATIC_OVERLAY)
             .withLocation(CustomGlint.res("pipeline/chromatic_overlay_wing"))
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build();
 
     // ── Normal-glint POST-IRIS overlay ───────────────────────────────────────────
@@ -296,12 +328,12 @@ public final class GlintPipelines {
      *  cull) with the overlay shader pair, a {@code Sampler1} (the cutout texture), a {@code DepthSampler}
      *  (scene depth, sampled in-shader for occlusion), and depth test {@code ALWAYS} with no write (the
      *  geometry re-renders into our OWN target, so the GPU depth test isn't used; occlusion is the shader's). */
-    public static final RenderPipeline GLINT_OVERLAY = GLINT_COLOR.toBuilder()
+    public static final RenderPipeline GLINT_OVERLAY = derive(GLINT_COLOR)
             .withLocation(CustomGlint.res("pipeline/glint_overlay"))
             .withVertexShader(GLINT_OVERLAY_SHADER)
             .withFragmentShader(GLINT_OVERLAY_SHADER)
-            .withSampler("Sampler1")
-            .withSampler("DepthSampler")
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+            .withBindGroupLayout(DEPTH_SAMPLER)
             .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
             .build();
 
@@ -315,21 +347,21 @@ public final class GlintPipelines {
      *  self-occludes that wobble and drops the shell out per-face; this flat 0.10-block bias absorbs it while
      *  still occluding against clearly nearer opaque geometry. Same samplers/blend/depth as {@link
      *  #GLINT_OVERLAY}; only the fragment program differs. */
-    public static final RenderPipeline GLINT_OVERLAY_LOOSE = GLINT_OVERLAY.toBuilder()
+    public static final RenderPipeline GLINT_OVERLAY_LOOSE = derive(GLINT_OVERLAY)
             .withLocation(CustomGlint.res("pipeline/glint_overlay_loose"))
             .withFragmentShader(GLINT_OVERLAY_LOOSE_SHADER)
             .build();
 
     /** {@link #GLINT_OVERLAY} for thin double-sided equipment (elytra wings, capes) drawn post-Iris: depth
-     *  test {@link CompareOp#LESS_THAN_OR_EQUAL} (no write) against the isolated target's OWN depth. The two
+     *  test {@link CompareOp#GREATER_THAN_OR_EQUAL} (no write) against the isolated target's OWN depth. The two
      *  folded wings overlap along the spine at near-coincident depth that the biased in-shader occlusion can't
      *  split, so the overlay drain first primes the isolated depth with the nearest surface ({@link
      *  #WING_DEPTH}) and this LEQUAL keeps only that one per pixel instead of additively doubling the seam.
      *  (World occlusion is still the fragment shader's DepthSampler test.) Cull stays OFF, see the mirrored-
      *  wing note on {@link #CHROMATIC_OVERLAY_WING}. */
-    public static final RenderPipeline GLINT_OVERLAY_WING = GLINT_OVERLAY.toBuilder()
+    public static final RenderPipeline GLINT_OVERLAY_WING = derive(GLINT_OVERLAY)
             .withLocation(CustomGlint.res("pipeline/glint_overlay_wing"))
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false))
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build();
 
     // ── Wing depth pre-pass (folded-elytra spine-seam fix, shader path only) ──────────────────────
@@ -344,7 +376,7 @@ public final class GlintPipelines {
      * #CHROMATIC_OVERLAY_WING}, LEQUAL) drops every farther overlapping surface instead of additively doubling
      * it into a bright spine seam.
      * <ul>
-     * <li><b>{@link CompareOp#LESS_THAN_OR_EQUAL} depth + WRITE</b> against the isolated target's own depth
+     * <li><b>{@link CompareOp#GREATER_THAN_OR_EQUAL} depth + WRITE</b> against the isolated target's own depth
      *     (cleared to far each frame): keeps the minimum (nearest) wing depth per pixel, order-independently.</li>
      * <li><b>Cull OFF</b>, matching the colour pass, so the mirrored wing's faces seed the depth too (see the
      *     note on {@link #CHROMATIC_OVERLAY_WING}). With no cull the pre-pass sees BOTH faces of a wing and
@@ -355,11 +387,11 @@ public final class GlintPipelines {
      *     LEQUAL test against this depth is exact.</li>
      * </ul>
      */
-    public static final RenderPipeline WING_DEPTH = GLINT_COLOR.toBuilder()
+    public static final RenderPipeline WING_DEPTH = derive(GLINT_COLOR)
             .withLocation(CustomGlint.res("pipeline/wing_depth"))
             .withVertexShader(OVERLAY_DEPTH_SHADER)
             .withFragmentShader(OVERLAY_DEPTH_SHADER)
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, true))
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true))
             .build();
 
     /** Fragment shader for the chromatic overlay composite (passthrough blit; blend is on the pipeline).
@@ -373,13 +405,13 @@ public final class GlintPipelines {
      *  report). A plain additive blend adds {@code src²} straight onto the scene, exactly matching the in-phase
      *  {@code src² + dst}. screenquad vertex + the passthrough fragment above; driven via {@code
      *  RenderPass.setPipeline}, so it must be registered through {@code RegisterRenderPipelinesEvent}. */
-    public static final RenderPipeline CHROMATIC_COMPOSITE_PIPE = RenderPipeline.builder()
+    public static final RenderPipeline CHROMATIC_COMPOSITE_PIPE = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
             .withLocation(CustomGlint.res("pipeline/chromatic_composite"))
             .withVertexShader(CustomGlint.res("core/screenquad"))
             .withFragmentShader(CHROMATIC_COMPOSITE_SHADER)
-            .withSampler("InSampler")
+            .withBindGroupLayout(BindGroupLayouts.IN_SAMPLER)
             .withColorTargetState(new ColorTargetState(BlendFunction.ADDITIVE))
-            .withVertexFormat(DefaultVertexFormat.EMPTY, VertexFormat.Mode.TRIANGLES)
+            .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
             .build();
 
     /** CLAMP + NEAREST: no wrap past the edges, no interpolation between texels. What every binding read by
@@ -417,7 +449,6 @@ public final class GlintPipelines {
                 .withTexture("Sampler1", paletteTex, GlintPipelines::paletteSampler)
                 .setLayeringTransform(layering)
                 .setTextureTransform(new TextureTransform(name + "|tex", animation))
-                .bufferSize(256)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -459,7 +490,6 @@ public final class GlintPipelines {
                 .withTexture("DepthSampler", sceneDepth, GlintPipelines::clampNearest)
                 .setLayeringTransform(LayeringTransform.NO_LAYERING)
                 .setTextureTransform(new TextureTransform(name + "|tex", animation))
-                .bufferSize(1536)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -502,7 +532,6 @@ public final class GlintPipelines {
                 .withTexture("DepthSampler", sceneDepth, GlintPipelines::clampNearest)
                 .setLayeringTransform(LayeringTransform.NO_LAYERING)
                 .setTextureTransform(new TextureTransform(name + "|tex", animation))
-                .bufferSize(1536)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -516,7 +545,6 @@ public final class GlintPipelines {
         RenderSetup setup = RenderSetup.builder(WING_DEPTH)
                 .withTexture("Sampler0", cutout)
                 .setLayeringTransform(LayeringTransform.NO_LAYERING)
-                .bufferSize(1536)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -532,7 +560,6 @@ public final class GlintPipelines {
                 .withTexture("Sampler2", blockAtlas, GlintPipelines::clampNearest)
                 .setLayeringTransform(layering)
                 .setTextureTransform(new TextureTransform(name + "|tex", animation))
-                .bufferSize(256)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -577,7 +604,6 @@ public final class GlintPipelines {
                 .withTexture("Sampler0", grayTexture, GlintPipelines::glintSampler)
                 .setLayeringTransform(layering)
                 .setTextureTransform(new TextureTransform(name + "|tex", animation))
-                .bufferSize(256)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -592,7 +618,6 @@ public final class GlintPipelines {
                 .withTexture("Sampler1", blockAtlas, GlintPipelines::clampNearest)
                 .setLayeringTransform(layering)
                 .setTextureTransform(new TextureTransform(name + "|tex", animation))
-                .bufferSize(256)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
@@ -697,7 +722,7 @@ public final class GlintPipelines {
      *  core/glow_silhouette, occlusion against the WORLD is decided in-shader by sampling the full-res
      *  scene depth (DepthSampler) and writing a visibility flag in alpha.
      *
-     *  Depth state: LESS_THAN_OR_EQUAL + depth WRITE against the mask target's OWN depth (cleared to far
+     *  Depth state: GREATER_THAN_OR_EQUAL (reversed-Z nearer-or-equal) + depth WRITE against the mask target's OWN depth (cleared to far
      *  each frame, separate from the sampled scene depth). This is purely an INTER-MOB early-Z optimization
      *  for the "cram space of glowing mobs" case: without it the old ALWAYS_PASS mask fully rasterized
      *  every mob behind every other mob (no early rejection) → enormous full-res overdraw. With it, only
@@ -707,12 +732,12 @@ public final class GlintPipelines {
      *  there (anything behind it is occluded by it). DepthSampler is added on top of OUTLINE_NO_CULL's
      *  Sampler0; output target is overridden at draw time via RenderSystem.outputColor/DepthTextureOverride
      *  to our mask target. */
-    public static final RenderPipeline GLOW_MASK_PIPE = RenderPipelines.OUTLINE_NO_CULL.toBuilder()
+    public static final RenderPipeline GLOW_MASK_PIPE = derive(RenderPipelines.OUTLINE_NO_CULL)
             .withLocation(CustomGlint.res("pipeline/glow_mask"))
             .withVertexShader(GLOW_SILHOUETTE_SHADER)
             .withFragmentShader(GLOW_SILHOUETTE_SHADER)
-            .withSampler("DepthSampler")
-            .withDepthStencilState(new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, true, 0.0f, 0.0f))
+            .withBindGroupLayout(DEPTH_SAMPLER)
+            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, true, 0.0f, 0.0f))
             .withColorTargetState(ColorTargetState.DEFAULT)
             .build();
 
@@ -725,19 +750,18 @@ public final class GlintPipelines {
                 .withTexture("Sampler0", texture)
                 .withTexture("DepthSampler", sceneDepth, GlintPipelines::clampNearest)
                 .setOutputTarget(OutputTarget.MAIN_TARGET)
-                .bufferSize(1536)
                 .createRenderSetup();
         return RenderType.create(name, setup);
     }
 
     /** Bilinear upscale of the half-res ring onto the main target (blended). */
-    public static final RenderPipeline GLOW_UPSCALE_PIPE = RenderPipeline.builder()
+    public static final RenderPipeline GLOW_UPSCALE_PIPE = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
             .withLocation(CustomGlint.res("pipeline/glow_upscale"))
             .withVertexShader(CustomGlint.res("core/screenquad"))
             .withFragmentShader(CustomGlint.res("post/glow_upscale"))
-            .withSampler("InSampler")
+            .withBindGroupLayout(BindGroupLayouts.IN_SAMPLER)
             .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-            .withVertexFormat(DefaultVertexFormat.EMPTY, VertexFormat.Mode.TRIANGLES)
+            .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
             .build();
 
     /** Per-object id-aware ring composite, single fullscreen pass (replaces the separable glow_dilate
@@ -745,14 +769,13 @@ public final class GlintPipelines {
      *  each object separately, so adjacent/overlapping glows don't fuse into one union ring. screenquad
      *  vertex + post/glow_outline_id fragment; driven via RenderPass.setPipeline, so it must be registered
      *  through RegisterRenderPipelinesEvent, see CustomGlintClientInit. */
-    public static final RenderPipeline GLOW_COMPOSITE_ID_PIPE = RenderPipeline.builder()
+    public static final RenderPipeline GLOW_COMPOSITE_ID_PIPE = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
             .withLocation(CustomGlint.res("pipeline/glow_outline_id"))
             .withVertexShader(CustomGlint.res("core/screenquad"))
             .withFragmentShader(CustomGlint.res("post/glow_outline_id"))
-            .withSampler("MaskSampler")
-            .withSampler("DepthSampler")       // scene depth at the RING pixel, for the ring-occlusion test
-            .withSampler("MaskDepthSampler")   // the mask target's OWN depth, for the source's distance
+            .withBindGroupLayout(BindGroupLayouts.PROJECTION)
+            .withBindGroupLayout(GLOW_COMPOSITE_SAMPLERS)
             .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-            .withVertexFormat(DefaultVertexFormat.EMPTY, VertexFormat.Mode.TRIANGLES)
+            .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
             .build();
 }

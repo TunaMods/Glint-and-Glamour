@@ -158,12 +158,12 @@ public class CustomGlintJeiPlugin implements IModPlugin {
         }
 
         // Dye: blank trim + dye -> trim with that color.
-        addDye(crafting, factory, "jei_dye_0", CustomGlint.WAVE,    Items.RED_DYE,    GlintTrimItem.DYE_COLORS[14]);
-        addDye(crafting, factory, "jei_dye_1", CustomGlint.STRIPES, Items.BLUE_DYE,   GlintTrimItem.DYE_COLORS[11]);
-        addDye(crafting, factory, "jei_dye_2", CustomGlint.SPARKLE, Items.CYAN_DYE,   GlintTrimItem.DYE_COLORS[9]);
-        addDye(crafting, factory, "jei_dye_3", CustomGlint.VANILLA, Items.YELLOW_DYE, GlintTrimItem.DYE_COLORS[4]);
-        addDye(crafting, factory, "jei_dye_4", CustomGlint.CRYSTAL, Items.PURPLE_DYE, GlintTrimItem.DYE_COLORS[10]);
-        addDye(crafting, factory, "jei_dye_5", CustomGlint.SWIRL,   Items.LIME_DYE,   GlintTrimItem.DYE_COLORS[5]);
+        addDye(crafting, factory, "jei_dye_0", CustomGlint.WAVE,    Items.DYE.red(),    GlintTrimItem.DYE_COLORS[14]);
+        addDye(crafting, factory, "jei_dye_1", CustomGlint.STRIPES, Items.DYE.blue(),   GlintTrimItem.DYE_COLORS[11]);
+        addDye(crafting, factory, "jei_dye_2", CustomGlint.SPARKLE, Items.DYE.cyan(),   GlintTrimItem.DYE_COLORS[9]);
+        addDye(crafting, factory, "jei_dye_3", CustomGlint.VANILLA, Items.DYE.yellow(), GlintTrimItem.DYE_COLORS[4]);
+        addDye(crafting, factory, "jei_dye_4", CustomGlint.CRYSTAL, Items.DYE.purple(), GlintTrimItem.DYE_COLORS[10]);
+        addDye(crafting, factory, "jei_dye_5", CustomGlint.SWIRL,   Items.DYE.lime(),   GlintTrimItem.DYE_COLORS[5]);
 
         // Merge: several single-color trims -> one multi-color trim.
         for (int n = 2; n <= 8; n++) {

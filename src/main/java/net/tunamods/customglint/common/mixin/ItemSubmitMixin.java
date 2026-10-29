@@ -1,7 +1,7 @@
 package net.tunamods.customglint.common.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.minecraft.client.renderer.SubmitNodeStorage;
+import net.minecraft.client.renderer.feature.ItemFeatureRenderer;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.world.item.ItemDisplayContext;
@@ -17,12 +17,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 /**
- * Adds a glint slot to the {@code ItemSubmit} deferred-draw node and captures the value from
+ * Adds a glint slot to the {@code ItemFeatureRenderer.Submit} deferred-draw node and captures the value from
  * {@link GlintCarrier#SUBMIT_GLINT} at construction (which happens inside the synchronous
  * {@code ItemStackRenderState.submit(...)} call). The node is read back during the draw in
- * {@code ItemFeatureRenderer.renderItem}.
+ * {@code ItemFeatureRenderer.prepareSubmit}. 26.2 builds a second Submit for the vanilla outline phase from the
+ * same call; it carries the same values and is never read.
  */
-@Mixin(SubmitNodeStorage.ItemSubmit.class)
+@Mixin(ItemFeatureRenderer.Submit.class)
 public class ItemSubmitMixin implements CgGlintHolder {
 
     @Unique private CustomGlint.Data customglint$glint;
