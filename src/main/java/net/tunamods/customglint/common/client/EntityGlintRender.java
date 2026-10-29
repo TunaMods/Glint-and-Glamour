@@ -675,6 +675,12 @@ public final class EntityGlintRender {
                 // a fixed atlas samples the wrong texels and the glint fills the whole quad or vanishes.
                 for (BakedQuad quad : job.quads) {
                     Identifier atlas = quad.materialInfo().sprite().atlasLocation();
+                    // Depth pre-pass of the item's own quads, like the wings: a 3D item (a backpack) must hide its
+                    // own far faces. Iris draws the held item with a squashed hand depth, so the scene-depth test
+                    // can't, and the colour pass (wing pipeline, LEQUAL) keeps only the nearest face per pixel.
+                    RenderType depthRt = CustomGlintRenderer.forWingDepthPrepass(atlas);
+                    bs.getBuffer(depthRt).putBakedQuad(job.pose, quad, qi);
+                    prepass.add(depthRt);
                     RenderType rt = chroma
                             ? CustomGlintRenderer.forItemGlintOverlay(job.glint, job.layerIdx, atlas)
                             : CustomGlintRenderer.forItemGlintOverlayNormal(job.glint, job.layerIdx, job.colorIdx, atlas);
@@ -682,8 +688,8 @@ public final class EntityGlintRender {
                     bs.getBuffer(rt).putBakedQuad(job.pose, quad, qi);
                 }
             }
-            // Depth first (writes the nearest wing into the isolated depth), then colour (wing pass LEQUAL-tests
-            // against it; non-wing/part/item RTs keep ALWAYS and ignore it).
+            // Depth first (writes the nearest wing or item face into the isolated depth), then colour (wing and
+            // item passes LEQUAL-test against it; other part RTs keep ALWAYS and ignore it).
             bs.flush(prepass);
         } finally {
             CustomGlintRenderer.overlayBatch().discard(); // a job that threw leaves its vertices staged
