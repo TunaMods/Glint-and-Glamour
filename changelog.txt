@@ -1,3 +1,9 @@
+[1.9.0]
+
+Fixed:
+- With a shader pack on, the glint on a held 3D item like a Sophisticated Backpack no longer shows through the item from its far side
+- A broken arm or item pose from another mod, such as very high Haste, can no longer crash the game through the glow outlines or the shader-pack glint overlays. If one fails, that frame skips them and the error is logged once
+
 [1.8.0]
 
 Added:
