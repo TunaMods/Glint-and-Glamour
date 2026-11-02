@@ -1,3 +1,7 @@
+[2.0.0]
+
+- Glow outlines are much cheaper on the GPU, which mostly helps laptops and integrated graphics. Outline render scale 2 and 3 also stop drawing over the empty parts of the screen
+
 [1.9.0]
 
 - Ported to 26.3
