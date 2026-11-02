@@ -1,3 +1,8 @@
+[2.0.0]
+
+Altered:
+- Glow outlines are cheaper on the GPU, which mostly helps laptops and integrated graphics. Each outline only scans as far as its own ring reaches, so far-away and dropped items cost less. They look exactly the same
+
 [1.9.0]
 
 Altered:
