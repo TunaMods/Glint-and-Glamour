@@ -16,10 +16,11 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Captures the first-person hand projection matrix so the glow drain can scissor the held-item composite.
+ * Captures the level and first-person hand projection matrices so the glow drains can scissor their composites.
  *
  * <p>The first-person hand renders with its own projection ({@code GameRenderer.hudProjection}, set up
  * from {@code cameraState.hudFov} immediately before {@code renderItemInHand}). That projection is uploaded
@@ -45,6 +46,17 @@ public class GameRendererMixin {
     @Shadow @Final private Projection hudProjection;
     @Shadow private void bobHurt(CameraRenderState cameraState, PoseStack poseStack) { throw new AssertionError(); }
     @Shadow private void bobView(CameraRenderState cameraState, PoseStack poseStack) { throw new AssertionError(); }
+
+    // The uploaded level projection has bob and the nausea/portal warp multiplied in. The camera's own
+    // projection leaves them out, so scissor rects sized with it drift off the drawn silhouettes while walking.
+    @ModifyArg(method = "renderLevel",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/client/renderer/ProjectionMatrixBuffer;getBuffer(Lorg/joml/Matrix4f;)Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"),
+            require = 0)
+    private Matrix4f cg_captureLevelProjection(Matrix4f projectionMatrix) {
+        EntityGlintRender.setLevelProjection(projectionMatrix);
+        return projectionMatrix;
+    }
 
     @Inject(method = "renderItemInHand", at = @At("HEAD"), require = 0)
     private void cg_captureHandProjection(CameraRenderState cameraState, float deltaPartialTick,

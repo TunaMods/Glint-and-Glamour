@@ -55,9 +55,8 @@ public class ItemInHandRendererMixin {
         if (CustomGlintRenderer.isShaderPackActive()) {
             return;
         }
-        // Full-screen (no scissor): the hand item's pose is in view space, not camera-relative world
-        // space, so the world projection used to size per-group scissors wouldn't line up. Only the held
-        // item is queued here (one group), so a full-screen composite costs next to nothing.
+        // The hand drain: the hand item's pose is in view space, not camera-relative world space, so the
+        // drain scissors it with the captured hand projection instead of the world one.
         EntityGlintRender.drainBodyOutlines(false);
     }
 }

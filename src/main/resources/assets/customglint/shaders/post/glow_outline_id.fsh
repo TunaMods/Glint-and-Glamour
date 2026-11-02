@@ -14,9 +14,9 @@
 // CATEGORY thickness. That rings the outer edge of every object PLUS the boundary wherever two objects overlap,
 // and each category can have its own ring width. MaskSampler MUST be NEAREST (alpha is a packed classifier).
 //
-// Cost note: an in-shape interior pixel with no other object within reach scans the whole kernel before
-// discarding (no cheap "deep interior" early-out). Fine for normal scenes; heavier under extreme entity
-// crams. Mitigate with outlineRenderScale (downscale) or smaller THICKNESS values.
+// Cost note: every pixel scans the whole kernel (no cheap "deep interior" early-out), so the kernel radius
+// is the cost of the pass. The drain compiles one variant per radius (GLOW_SEARCH define, see
+// GlintPipelines.GLOW_COMPOSITE_ID_PIPES) and picks the smallest that covers every ring in the pass.
 
 uniform sampler2D MaskSampler;
 uniform sampler2D DepthSampler;       // scene depth, sampled at the RING pixel
@@ -28,11 +28,17 @@ out vec4 fragColor;
 
 // Per-category outline thickness, in texels (≈ screen px at DOWNSCALE=1). EDIT to taste. Index = category:
 //   [0] entity   [1] armor   [2] item (3rd-person held / dropped)   [3] held (first-person)
-// SEARCH MUST be >= ceil(max of these). If you set any above 7, raise SEARCH to match AND raise
-// EntityGlintRender.SCISSOR_PAD to >= that + ~4 so the thicker ring isn't clipped at the group rect edge.
 // These are the FULL widths, applied at or nearer than REF_DIST; beyond it the ring narrows with distance.
+// THICKNESS, REF_DIST, MIN_SCALE and EDGE_FEATHER are mirrored in CustomGlintRenderer (RING_*), which picks
+// each pass's kernel radius from them: change both together. A width above 7 also needs
+// GlintPipelines.MAX_GLOW_SEARCH raised to match.
 const float THICKNESS[4] = float[](4.0, 4.0, 3.0, 7.0);
-const int   SEARCH       = 7;             // ceil(max(THICKNESS))
+
+// Kernel radius in texels, set per pipeline variant by the drain. 7 is the widest ring (first-person held).
+#ifndef GLOW_SEARCH
+#define GLOW_SEARCH 7
+#endif
+const int SEARCH = GLOW_SEARCH;
 
 // Distance-proportional thinning. A constant pixel-width ring looks FATTER the farther (smaller on screen)
 // an object gets. To stop that, each source's reach scales by REF_DIST / itsDistance, clamped to [MIN_SCALE,1]:
