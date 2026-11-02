@@ -84,8 +84,8 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     // thickness (see glow_composite.fsh THICKNESS[]).
     public static final int CAT_ENTITY = 0, CAT_ARMOR = 1, CAT_ITEM = 2, CAT_HELD_FP = 3;
 
-    // Per-category ring thickness in texels. MUST mirror glow_composite.fsh THICKNESS[]. Drives the
-    // composite kernel radius and the per-job scissor pad for whichever categories a single drain contains.
+    // Per-category ring thickness in texels. MUST mirror glow_composite.fsh THICKNESS[]. Times an object's
+    // distance scale it gives that object's composite kernel radius and scissor pad.
     private static final int[] CAT_THICKNESS = { 4, 4, 3, 7 };
 
     private static int glowIdCounter = 0;
@@ -359,7 +359,10 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     // {@code snap} = framebuffer texels per ring step. 1.0 = world (per-pixel, smooth dilation); for GUI
     // icons it is the item-pixel size (guiScale * preview zoom) so the composite dilates in item-pixel steps
     // and the ring is BLOCKY, matching the pixel-art icon instead of a screen-pixel-smooth edge.
-    private record Box(int x, int y, int w, int h, float scale, int id, float dist, int prio, float snap) {}
+    // {@code thickness} = the widest category thickness among the box's silhouettes (world only, 0 in the
+    // GUI, which derives its reach from snap). Times scale it bounds the ring, so it sets the pass radius.
+    private record Box(int x, int y, int w, int h, float scale, int id, float dist, int prio, float snap,
+                       int thickness) {}
     private static final List<Box> itemBoxes = new ArrayList<>();
 
     // Distance-proportional thinning (ported from 26.1.2's glow_outline_id.fsh, computed CPU-side here from
@@ -750,22 +753,18 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
         if (!itemBoxes.isEmpty()) {
             // Each icon carries its OWN ring reach in framebuffer texels (box.snap = GUI_RING_ITEM_PIXELS *
-            // icon-pixel size, thinned for 3D items). SearchRadius is the kernel bound = the widest reach
-            // present; each pass then limits to its own reach via ThicknessScale = reach / SearchRadius, so a
-            // thinned 3D icon rings thinner than a flat icon in the same drain (the shared kernel can't do
-            // that without per-pass scaling).
-            int searchRadius = 1;
-            for (Box bx : itemBoxes) {
-                searchRadius = Math.max(searchRadius, (int) Math.ceil(bx.snap));
-            }
+            // icon-pixel size, thinned for 3D items). Each pass scans only that reach: SearchRadius =
+            // ceil(reach), ThicknessScale = reach / SearchRadius, so a small slot icon doesn't pay for the
+            // wand preview's much wider kernel.
             // One scissored pass per item id; the TargetId filter keeps each icon's ring inside its own box.
             // ringOcclusion=false: the GUI is orthographic, the depth-based occlusion test is invalid there
             // and icons never overlap, so it would only (wrongly) erase the ring. guiMode=true: square reach
-            // = ThicknessScale * searchRadius texels, no opening guard.
-            compositeBegin(main, searchRadius, false, true, 0.0f, 0.0f, maskTarget, 0);
+            // = ThicknessScale * SearchRadius texels, no opening guard.
+            compositeBegin(main, false, true, 0.0f, 0.0f, maskTarget, 0);
             for (int i = 0; i < itemBoxes.size(); i++) {
                 Box box = itemBoxes.get(i);
-                compositePass(box, box.snap / searchRadius, box.id);
+                int search = Math.max(1, (int) Math.ceil(box.snap));
+                compositePass(box, box.snap / search, box.id, search);
             }
             compositeEnd();
         } else {
@@ -786,9 +785,8 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  id-aware dilation composite once per cluster of overlapping objects. Quad items trace the block
      *  atlas through {@link #silhouetteRT()}; model items (special / 3D BEWLR items, armor, entities) trace
      *  their own texture through {@link #silhouetteTexRT}. Each job carries its own {@code category}; the
-     *  per-job key drives the shader's per-category {@code THICKNESS[]}, and the composite kernel radius for
-     *  the whole pass is the widest category present (a source can never ring past its own thickness, so a
-     *  larger kernel only costs unused taps, never a wrong ring). */
+     *  per-job key drives the shader's per-category {@code THICKNESS[]}, and each id's pass scans only as far
+     *  as that id's own distance-scaled ring reaches ({@link #ringRadius}). */
     private static void drain(List<ItemJob> jobs, List<ModelJob> models, boolean sceneOcclusion) {
         if (jobs.isEmpty() && models.isEmpty()) return;
         if (silhouetteShader == null || compositeShader == null) {
@@ -797,8 +795,8 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
         Matrix4f proj = RenderSystem.getProjectionMatrix();
         ensureTarget(main.width, main.height);
-        int searchRadius = accumulate(jobs, models, main, itemBoxes, maskTarget, sceneOcclusion);
-        composite(main, itemBoxes, searchRadius, proj.m22(), proj.m32(), maskTarget, 0);
+        accumulate(jobs, models, main, itemBoxes, maskTarget, sceneOcclusion);
+        composite(main, itemBoxes, proj.m22(), proj.m32(), maskTarget, 0);
         jobs.clear();
         models.clear();
     }
@@ -812,7 +810,6 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     // fullscreen blit; only the ring-occlusion depth linearisation needs the world projection, snapshotted
     // here as projA/projB. Off-pack, AFTER_WEATHER still does the whole drain immediately (drainWorld).
     private static final List<Box> worldDeferredBoxes = new ArrayList<>();
-    private static int worldDeferredSearchRadius;
     private static float worldDeferredProjA, worldDeferredProjB;
     private static boolean worldDeferredPending = false;
 
@@ -828,7 +825,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
         Matrix4f proj = RenderSystem.getProjectionMatrix();
         worldDeferredMask = ensureTarget(worldDeferredMask, main.width, main.height);
-        worldDeferredSearchRadius = accumulate(worldJobs, modelWorldJobs, main, worldDeferredBoxes, worldDeferredMask, true);
+        accumulate(worldJobs, modelWorldJobs, main, worldDeferredBoxes, worldDeferredMask, true);
         worldDeferredProjA = proj.m22();
         worldDeferredProjB = proj.m32();
         worldDeferredPending = true;
@@ -850,7 +847,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
         // EdgeBleed=1: the pack's final image insets the item ~1px inside our silhouette, so bleed the ring
         // one texel inward over the border to close the hairline gap.
-        composite(main, worldDeferredBoxes, worldDeferredSearchRadius, worldDeferredProjA, worldDeferredProjB,
+        composite(main, worldDeferredBoxes, worldDeferredProjA, worldDeferredProjB,
                 worldDeferredMask, 1);
     }
 
@@ -1103,15 +1100,11 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     /** Accumulate the silhouettes of {@code jobs}+{@code models} into the mask and compute each object's
      *  screen box into {@code outBoxes}. Must run while the world matrices are live (the silhouette RT draws
-     *  through {@code ProjMat*ModelViewMat} and {@link SilhouetteConsumer} projects each vertex). Returns the
-     *  composite kernel radius (the widest category present). Leaves the mask bound for writing. */
-    private static int accumulate(List<ItemJob> jobs, List<ModelJob> models, RenderTarget main, List<Box> outBoxes,
-                                  TextureTarget mask, boolean sceneOcclusion) {
+     *  through {@code ProjMat*ModelViewMat} and {@link SilhouetteConsumer} projects each vertex). Leaves the
+     *  mask bound for writing. */
+    private static void accumulate(List<ItemJob> jobs, List<ModelJob> models, RenderTarget main, List<Box> outBoxes,
+                                   TextureTarget mask, boolean sceneOcclusion) {
         beginAccumulation(main.width, main.height);
-
-        int searchRadius = 1;
-        for (ItemJob j : jobs) searchRadius = Math.max(searchRadius, CAT_THICKNESS[j.category]);
-        for (ModelJob j : models) searchRadius = Math.max(searchRadius, CAT_THICKNESS[j.category]);
 
         // Force the depth/colour write masks on before clearing: glClear honours the live GL write masks,
         // and the world render phase (AFTER_WEATHER, after weather/translucent) leaves depthMask=false.
@@ -1145,8 +1138,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
             for (BakedQuad quad : job.quads) {
                 sc.putBulkData(job.pose, quad, 1.0f, 1.0f, 1.0f, 1.0f, job.light, OverlayTexture.NO_OVERLAY);
             }
-            int[] box = computeScissor(main.width, main.height, CAT_THICKNESS[job.category]);
-            if (box != null) { float d = computeDist(); outBoxes.add(new Box(box[0], box[1], box[2], box[3], computeScale(d), key & 31, d, 0, 1.0f)); }
+            addWorldBox(outBoxes, main, job.category, key & 31, 0);
         }
 
         // Model silhouettes (special / 3D BEWLR items, armor pieces, entity bodies): each traces its real
@@ -1159,13 +1151,27 @@ public final class GlowOutlineRenderer extends RenderStateShard {
                     job.triangles ? silhouetteTexTriangleRT(job.tex) : silhouetteTexRT(job.tex));
             SilhouetteConsumer sc = new SilhouetteConsumer(texBuf, job.color, job.key);
             emitModel(sc, job);
-            int[] box = computeScissor(main.width, main.height, CAT_THICKNESS[job.category]);
-            if (box != null) { float d = computeDist(); outBoxes.add(new Box(box[0], box[1], box[2], box[3], computeScale(d), job.key & 31, d, job.priority, 1.0f)); }
+            addWorldBox(outBoxes, main, job.category, job.key & 31, job.priority);
         }
         MASK_BUFFERS.endBatch();
         // Don't leave the (per-frame, resize-volatile) main depth texture bound to unit 1.
         RenderSystem.setShaderTexture(1, 0);
-        return searchRadius;
+    }
+
+    /** Boxes the silhouette just accumulated, padded for the ring it can actually draw (see
+     *  {@link #ringRadius}) rather than the widest category in the drain. */
+    private static void addWorldBox(List<Box> outBoxes, RenderTarget main, int category, int id, int prio) {
+        float d = computeDist();
+        float scale = computeScale(d);
+        int[] box = computeScissor(main.width, main.height, ringRadius(CAT_THICKNESS[category], scale));
+        if (box != null) {
+            outBoxes.add(new Box(box[0], box[1], box[2], box[3], scale, id, d, prio, 1.0f, CAT_THICKNESS[category]));
+        }
+    }
+
+    // The composite rings a source out to r = THICKNESS * ThicknessScale, so ceil(r) texels covers every tap.
+    private static int ringRadius(int thickness, float scale) {
+        return Math.max(1, (int) Math.ceil(thickness * scale));
     }
 
     /** Composite once per OUTLINE ID, FAR→NEAR. Each pass rings only its own id's silhouette and is occluded
@@ -1173,7 +1179,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  cleanly over a farther one's (elytra over helmet). Matrix-independent (fullscreen blit), safe to run
      *  at a later phase than {@link #accumulate} (the deferred under-pack path). Rebinds the main target even
      *  when there are no on-screen boxes so the offscreen mask doesn't stay bound for whatever renders next. */
-    private static void composite(RenderTarget main, List<Box> boxes, int searchRadius, float projA, float projB,
+    private static void composite(RenderTarget main, List<Box> boxes, float projA, float projB,
                                   TextureTarget mask, int edgeBleed) {
         if (!boxes.isEmpty()) {
             groupById(boxes);                       // merge same-id boxes; distinct ids stay separate
@@ -1182,10 +1188,10 @@ public final class GlowOutlineRenderer extends RenderStateShard {
             // regardless of which is technically nearer at the seam.
             boxes.sort((a, b) -> a.prio != b.prio ? Integer.compare(a.prio, b.prio)
                                                   : Float.compare(b.dist, a.dist));
-            compositeBegin(main, searchRadius, true, false, projA, projB, mask, edgeBleed);
+            compositeBegin(main, true, false, projA, projB, mask, edgeBleed);
             for (int i = 0; i < boxes.size(); i++) {
                 Box box = boxes.get(i);
-                compositePass(box, box.scale, box.id);
+                compositePass(box, box.scale, box.id, ringRadius(box.thickness, box.scale));
             }
             compositeEnd();
         } else {
@@ -1209,7 +1215,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     }
 
     // The composite is split into begin / per-pass / end so the GL state + per-drain-constant uniforms
-    // (blend, shader, mask textures, SearchRadius, ProjA/ProjB, GuiMode) are issued ONCE per drain rather
+    // (blend, shader, mask textures, ProjA/ProjB, GuiMode) are issued ONCE per drain rather
     // than re-issued for every id pass. Nothing between passes resets that state, so this is pixel-identical;
     // it just removes ~15 GL/uniform calls per pass, which adds up with many glowing objects on screen.
 
@@ -1218,7 +1224,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
      *  the projection the silhouettes were accumulated under, passed in (not read live) so the deferred
      *  under-Iris composite, which runs at {@code renderLevel} TAIL with a different live projection, still
      *  linearises ring-occlusion depth with the world projection. Ignored when {@code ringOcclusion} is off. */
-    private static void compositeBegin(RenderTarget main, int searchRadius, boolean ringOcclusion, boolean guiMode,
+    private static void compositeBegin(RenderTarget main, boolean ringOcclusion, boolean guiMode,
                                        float projA, float projB, TextureTarget mask, int edgeBleed) {
         main.bindWrite(true);
         RenderSystem.disableDepthTest();
@@ -1235,7 +1241,6 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         // make the occlusion test reject every ring pixel, so the GUI drain passes ringOcclusion=false:
         // unit 1 reads texture 0 (depth 0 everywhere) -> ringDist==srcDist -> nothing is occluded.
         RenderSystem.setShaderTexture(1, ringOcclusion ? mask.getDepthTextureId() : 0);
-        if (uSearchRadius != null) uSearchRadius.set(searchRadius);
         if (uProjA != null) uProjA.set(projA);
         if (uProjB != null) uProjB.set(projB);
         // GUI mode: square (Chebyshev) reach = SearchRadius texels (a sub-icon-pixel thickness), no
@@ -1246,9 +1251,11 @@ public final class GlowOutlineRenderer extends RenderStateShard {
 
     private static int compositeEdgeBleed;
 
-    /** One scissored composite pass ringing a single outline id ({@code targetId}). */
-    private static void compositePass(Box box, float thicknessScale, int targetId) {
+    /** One scissored composite pass ringing a single outline id ({@code targetId}), scanning
+     *  {@code searchRadius} texels. */
+    private static void compositePass(Box box, float thicknessScale, int targetId, int searchRadius) {
         if (box != null) RenderSystem.enableScissor(box.x, box.y, box.w, box.h);
+        if (uSearchRadius != null) uSearchRadius.set(searchRadius);
         if (uThicknessScale != null) uThicknessScale.set(thicknessScale);
         if (uTargetId != null) uTargetId.set(targetId);
         // Scale the inward edge-bleed by the SAME per-object distance factor as the rest of the ring, so the
@@ -1351,7 +1358,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         if (x1 <= x0 || y1 <= y0) return null;
         // snap carries the per-icon ring reach (texels); drainGui sets the pass's ThicknessScale = reach /
         // SearchRadius so each icon rings to its OWN reach (the shader limits the GUI kernel per pass).
-        return new Box(x0, y0, x1 - x0, y1 - y0, 1.0f, id, 0.0f, 0, reach);
+        return new Box(x0, y0, x1 - x0, y1 - y0, 1.0f, id, 0.0f, 0, reach, 0);
     }
 
     /** Intersects a ring box with a saved GL scissor box ({@code [x,y,w,h]}, bottom-left); null if empty.
@@ -1363,7 +1370,7 @@ public final class GlowOutlineRenderer extends RenderStateShard {
         int x1 = Math.min(b.x + b.w, s[0] + s[2]);
         int y1 = Math.min(b.y + b.h, s[1] + s[3]);
         if (x1 <= x0 || y1 <= y0) return null;
-        return new Box(x0, y0, x1 - x0, y1 - y0, b.scale, b.id, b.dist, b.prio, b.snap);
+        return new Box(x0, y0, x1 - x0, y1 - y0, b.scale, b.id, b.dist, b.prio, b.snap, b.thickness);
     }
 
     /** Groups boxes by outline id in-place: same-id boxes (a figure's body + all its armor pieces) union
@@ -1390,7 +1397,8 @@ public final class GlowOutlineRenderer extends RenderStateShard {
     private static Box unionBox(Box a, Box b) {
         int x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y);
         int x1 = Math.max(a.x + a.w, b.x + b.w), y1 = Math.max(a.y + a.h, b.y + b.h);
-        return new Box(x0, y0, x1 - x0, y1 - y0, Math.max(a.scale, b.scale), a.id, Math.min(a.dist, b.dist), Math.max(a.prio, b.prio), a.snap);
+        return new Box(x0, y0, x1 - x0, y1 - y0, Math.max(a.scale, b.scale), a.id, Math.min(a.dist, b.dist),
+                Math.max(a.prio, b.prio), a.snap, Math.max(a.thickness, b.thickness));
     }
 
     // ── Silhouette vertex consumer ─────────────────────────────────────────────
