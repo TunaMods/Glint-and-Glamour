@@ -51,8 +51,7 @@ public class ModelFeatureRendererMixin {
                 if (instance == go.model()) {
                     // Body: fan this single walk into the glow mask too, no extra traversal, using the
                     // real entity texture so the silhouette alpha-discards to the body shape.
-                    target = CustomGlintRenderer.fanBodyGlow(buffer, submit.pose(), go.color(), go.texture(),
-                            state.boundingBoxWidth, state.boundingBoxHeight, state);
+                    target = CustomGlintRenderer.fanBodyGlow(buffer, submit.pose(), go.color(), go.texture(), state);
                 } else if (EntityGlintRender.isEntitySurface(submit.renderType())) {
                     // RenderLayer surface of the SAME glowing entity (sheep wool, slime outer cube, saddle,
                     // stray clothing, …): fan its silhouette into the same mask + share the entity outline id
