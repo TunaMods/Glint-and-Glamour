@@ -695,7 +695,7 @@ public final class GlintPipelines {
     // Replaces the dead-end per-pixel-depth stencil band ring the 1.20.1/1.21.1 builds used (the stencil
     // two-pass outline, removed in 26.1). That ring flickered/dropped at silhouette edges because the
     // dilated band's depth is unusable there regardless of bias, confirmed dead end. Two stages:
-    //  1. GLOW_MASK_PIPE, ONE render of each glowing model into our own isolated half-res mask target,
+    //  1. GLOW_MASK_PIPE, ONE render of each glowing model into our own isolated mask target,
     //     depth test ALWAYS_PASS (marks the whole outer shape). core/glow_silhouette decides occlusion
     //     per-fragment by sampling the full-res scene depth (DepthSampler) and encodes shape + visibility
     //     + object id into alpha. Collapses the earlier two passes (full-shape + visible) and
@@ -751,18 +751,33 @@ public final class GlintPipelines {
             .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
             .build();
 
+    // The widest ring in post/glow_outline_id's THICKNESS table (first-person held), in mask texels.
+    public static final int MAX_GLOW_SEARCH = 7;
+
     /** Per-object id-aware ring composite, single fullscreen pass (replaces the separable glow_dilate
      *  pair). Reads the mask (per-object id + visibility packed in alpha by core/glow_silhouette) and rings
      *  each object separately, so adjacent/overlapping glows don't fuse into one union ring. screenquad
-     *  vertex + post/glow_outline_id fragment; driven via RenderPass.setPipeline, so it must be registered
-     *  through RegisterRenderPipelinesEvent, see CustomGlintClientInit. */
-    public static final RenderPipeline GLOW_COMPOSITE_ID_PIPE = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
-            .withLocation(CustomGlint.res("pipeline/glow_outline_id"))
-            .withVertexShader(CustomGlint.res("core/screenquad"))
-            .withFragmentShader(CustomGlint.res("post/glow_outline_id"))
-            .withBindGroupLayout(BindGroupLayouts.PROJECTION)
-            .withBindGroupLayout(GLOW_COMPOSITE_SAMPLERS)
-            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-            .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
-            .build();
+     *  vertex + post/glow_outline_id fragment; driven via RenderPass.setPipeline, so every variant must be
+     *  registered through RegisterRenderPipelinesEvent, see CustomGlintClientInit. */
+    // One variant per kernel radius (index = GLOW_SEARCH, index 0 unused). The kernel is the cost of the pass
+    // and most rings need far less than 7. A compile-time radius keeps a fixed loop the driver can unroll.
+    public static final RenderPipeline[] GLOW_COMPOSITE_ID_PIPES = new RenderPipeline[MAX_GLOW_SEARCH + 1];
+    static {
+        for (int s = 1; s <= MAX_GLOW_SEARCH; s++) {
+            GLOW_COMPOSITE_ID_PIPES[s] = RenderPipeline.builder(RenderPipelines.GLOBALS_SNIPPET)
+                    .withLocation(CustomGlint.res("pipeline/glow_outline_id_" + s))
+                    .withVertexShader(CustomGlint.res("core/screenquad"))
+                    .withFragmentShader(CustomGlint.res("post/glow_outline_id"))
+                    .withShaderDefine("GLOW_SEARCH", s)
+                    .withBindGroupLayout(BindGroupLayouts.PROJECTION)
+                    .withBindGroupLayout(GLOW_COMPOSITE_SAMPLERS)
+                    .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                    .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
+                    .build();
+        }
+    }
+
+    public static RenderPipeline glowCompositePipe(int search) {
+        return GLOW_COMPOSITE_ID_PIPES[Math.clamp(search, 1, MAX_GLOW_SEARCH)];
+    }
 }

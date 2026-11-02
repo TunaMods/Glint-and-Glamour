@@ -285,15 +285,8 @@ public final class CustomGlintRenderer {
     private static final GlintBatch GLOW_BODY = new GlintBatch("customglint glow body");
     private static boolean bodyGlowPresent;
     private static int bodyGlowCount; // this frame's fanned body count, for the outlineMaxEntities cap
-    private static float bgMinX, bgMinY, bgMinZ, bgMaxX, bgMaxY, bgMaxZ;
-    // Per-body camera-relative AABBs {minX,minY,minZ,maxX,maxY,maxZ} this frame, for the per-cluster
-    // composite scissor (EntityGlintRender splits these into disjoint screen rects so the composite pays
-    // for each cluster's screen area, not the whole union bbox spanning the gaps between them). The union
-    // (bgMin/Max above) is still tracked for the mask clear + the single-rect fallback.
-    private static final List<float[]> bgBoxes = new ArrayList<>();
-    // Parallel to bgBoxes but the TIGHT per-body silhouette AABB (filled by an AABBTrackingConsumer in
-    // fanBodyGlow as the body draws), so the drain can scissor a single glowing entity's composite to its
-    // real silhouette instead of the loose pose-origin box. Cleared per frame in resetBodyGlow.
+    // One camera-relative silhouette AABB per body and per layer, filled while the model draws. The drain
+    // scissors the composite passes to them.
     private static final List<float[]> bgTightBoxes = new ArrayList<>();
     // Per-frame per-object mask key stamped into the vertex-colour alpha so the id-aware composite
     // (post/glow_outline_id) keeps each silhouette's outline separate AND picks a per-category thickness.
@@ -327,12 +320,11 @@ public final class CustomGlintRenderer {
      * buffer AND our glow-mask buffer. The silhouette is captured for the cost of a few extra vertex
      * writes, with no second model traversal and no second setupAnim (strictly cheaper than vanilla's
      * outline, which re-renders the model). Called from {@code ModelFeatureRendererMixin}'s redirect of
-     * the body {@code renderToBuffer}. Also records the camera-relative bbox for the composite scissor.
+     * the body {@code renderToBuffer}. Also records the silhouette's camera-relative bbox for the composite scissor.
      */
     public static VertexConsumer fanBodyGlow(VertexConsumer bodyBuffer, PoseStack.Pose pose,
-            int color, Identifier texture, float bbWidth, float bbHeight,
-            Object entityState) {
-        return fanEntityGlow(bodyBuffer, pose, color, texture, bbWidth, bbHeight, entityState, true);
+            int color, Identifier texture, Object entityState) {
+        return fanEntityGlow(bodyBuffer, pose, color, texture, entityState, true);
     }
 
     /** Full-opaque silhouette for layer/special models: alpha never discards, so the whole model shape
@@ -347,18 +339,17 @@ public final class CustomGlintRenderer {
      * id ({@link #glowKeyFor}, CAT_ENTITY) so the whole mob composites as ONE ring with no doubled seam.
      * Like {@link #fanBodyGlow} this is in-phase (no second model walk, no second setupAnim); the layer is
      * already posed when {@code ModelFeatureRenderer.prepareModel} draws it. Uses white.png (full geometry)
-     * so the silhouette follows the layer's real shape, and does NOT touch the entity cap / loose bbox
-     * bookkeeping (the body already accounts the entity); only the tight silhouette box is extended so the
-     * composite scissor covers a layer that sticks out past the body (mushrooms, wool).
+     * so the silhouette follows the layer's real shape, and does NOT count toward the entity cap (the body
+     * already accounts the entity); it records its own silhouette box so the composite scissor covers a layer
+     * that sticks out past the body (mushrooms, wool).
      */
     public static VertexConsumer fanLayerGlow(VertexConsumer layerBuffer, PoseStack.Pose pose,
             int color, Object entityState) {
-        return fanEntityGlow(layerBuffer, pose, color, WHITE_SILHOUETTE, 0.0f, 0.0f, entityState, false);
+        return fanEntityGlow(layerBuffer, pose, color, WHITE_SILHOUETTE, entityState, false);
     }
 
     private static VertexConsumer fanEntityGlow(VertexConsumer baseBuffer, PoseStack.Pose pose,
-            int color, Identifier texture, float bbWidth, float bbHeight,
-            Object entityState, boolean isBody) {
+            int color, Identifier texture, Object entityState, boolean isBody) {
         if (texture == null || pose == null || !GlintClientConfig.entityOutlines()) return baseBuffer;
         // Iris re-renders the body into its shadow map through this same tee; capturing there adds a
         // second, light-posed silhouette that the world drain flushes as a detached floating ring.
@@ -373,62 +364,21 @@ public final class CustomGlintRenderer {
         }
         RenderType rt = glowMaskRT(texture);
         int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
-        // Tight per-object silhouette AABB, filled as the model draws through the returned consumer (added to
-        // bgTightBoxes by reference now; populated by drain time). Lets the drain scissor the composite to
-        // the real silhouette, body AND any layer that extends past it, not the loose pose-origin box.
+        // Added now, filled as the model draws through the returned consumer, complete by drain time.
         float[] tight = {Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY,
                 Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY};
         VertexConsumer mask = new AABBTrackingConsumer(new FullColorOverrideConsumer(
                 GLOW_BODY.getBuffer(rt), r, g, b, glowKeyFor(entityState, CAT_ENTITY)), tight);
         bgTightBoxes.add(tight);
-        if (isBody) {
-            // Generous camera-relative box (see EntityGlintRender.computeGroupScissor for the radius
-            // rationale). Layers reuse the body's loose box (same entity), only the tight box above grows.
-            float rad = bbWidth + bbHeight + 2.0f;
-            float x = m.m30(), y = m.m31(), z = m.m32();
-            if (!bodyGlowPresent) {
-                bgMinX = x - rad; bgMaxX = x + rad; bgMinY = y - rad; bgMaxY = y + rad; bgMinZ = z - rad; bgMaxZ = z + rad;
-                bodyGlowPresent = true;
-            } else {
-                bgMinX = Math.min(bgMinX, x - rad); bgMaxX = Math.max(bgMaxX, x + rad);
-                bgMinY = Math.min(bgMinY, y - rad); bgMaxY = Math.max(bgMaxY, y + rad);
-                bgMinZ = Math.min(bgMinZ, z - rad); bgMaxZ = Math.max(bgMaxZ, z + rad);
-            }
-            bgBoxes.add(new float[]{x - rad, y - rad, z - rad, x + rad, y + rad, z + rad});
-        } else {
-            // A layer fanning before its body (rare) still needs the entity group to be processed.
-            bodyGlowPresent = true;
-        }
+        // A layer fanning before its body (rare) still needs the entity group to be processed.
+        bodyGlowPresent = true;
         return new TeeConsumer(baseBuffer, mask);
     }
 
     public static boolean hasBodyGlow() { return bodyGlowPresent; }
 
-    /** Camera-relative AABB {minX,minY,minZ,maxX,maxY,maxZ} of this frame's body glows (union), or null. */
-    @Nullable
-    public static float[] bodyGlowBox() {
-        return bodyGlowPresent ? new float[]{bgMinX, bgMinY, bgMinZ, bgMaxX, bgMaxY, bgMaxZ} : null;
-    }
-
-    /** Per-body camera-relative AABBs captured this frame, for the per-cluster composite scissor. Live
-     *  list, valid only during the drain; cleared by {@link #resetBodyGlow}. */
-    public static List<float[]> bodyGlowBoxes() { return bgBoxes; }
-
-    /** Union of this frame's TIGHT per-body silhouette AABBs (real geometry, not the loose pose box), or
-     *  null if none were captured, used to scissor a glowing entity's composite to its actual size. */
-    @Nullable
-    public static float[] bodyGlowTightUnion() {
-        float[] u = null;
-        for (float[] bx : bgTightBoxes) {
-            if (bx[0] > bx[3]) continue; // never drawn → still empty sentinel
-            if (u == null) u = new float[]{bx[0], bx[1], bx[2], bx[3], bx[4], bx[5]};
-            else {
-                u[0] = Math.min(u[0], bx[0]); u[1] = Math.min(u[1], bx[1]); u[2] = Math.min(u[2], bx[2]);
-                u[3] = Math.max(u[3], bx[3]); u[4] = Math.max(u[4], bx[4]); u[5] = Math.max(u[5], bx[5]);
-            }
-        }
-        return u;
-    }
+    // Live list, valid only during the drain. A model that never drew leaves its empty sentinel (min > max).
+    public static List<float[]> bodyGlowBoxes() { return bgTightBoxes; }
 
     /** Draws all captured body silhouettes into the mask target. The flush consumes the staged vertices, so the
      *  next frame starts clean. */
@@ -436,25 +386,40 @@ public final class CustomGlintRenderer {
         GLOW_BODY.flush(maskColor, maskDepth);
     }
 
-    public static void resetBodyGlow() { bodyGlowPresent = false; bodyGlowCount = 0; bgBoxes.clear(); bgTightBoxes.clear(); glowIdCounter = 0; GLOW_ID_BY_IDENTITY.clear(); }
+    public static void resetBodyGlow() { bodyGlowPresent = false; bodyGlowCount = 0; bgTightBoxes.clear(); glowIdCounter = 0; GLOW_ID_BY_IDENTITY.clear(); }
 
-    // Tight per-group silhouette AABB (camera-relative world space, the ACTUAL posed geometry captured by
-    // an AABBTrackingConsumer wrapped around accumulateGlowMask/Item/Part, NOT the loose pose-origin±radius
-    // box). The drain projects this to scissor the COMPOSITE (the expensive 149-tap pass) to the real
-    // silhouette instead of the near-fullscreen pose box a close/screen-filling object projects to (e.g. a
-    // 3rd-person player in glowing armor). The loose box still drives the cheap mask clear.
+    // Silhouette AABB of the job being accumulated. The drain resets it before each job and reads it after,
+    // so every armor piece and item gets its own scissor box.
     private static final float[] glowMaskBox = new float[6];
-    /** Resets the tight-AABB accumulator; the drain calls this once per group before its accumulate* calls. */
     public static void resetGlowMaskBox() {
         glowMaskBox[0] = glowMaskBox[1] = glowMaskBox[2] = Float.POSITIVE_INFINITY;
         glowMaskBox[3] = glowMaskBox[4] = glowMaskBox[5] = Float.NEGATIVE_INFINITY;
     }
-    /** The tight silhouette AABB {minX,minY,minZ,maxX,maxY,maxZ} accumulated since the last
-     *  {@link #resetGlowMaskBox}, or null when nothing was emitted (degenerate → caller keeps the loose
-     *  pose-origin scissor = prior behaviour). */
     @Nullable
     public static float[] glowMaskBox() {
         return glowMaskBox[0] <= glowMaskBox[3] ? glowMaskBox.clone() : null;
+    }
+
+    public static void discardGlowMask() { GLOW_MASK.discard(); }
+    public static void discardBodyGlow() { GLOW_BODY.discard(); }
+
+    // Mirrors post/glow_outline_id's THICKNESS / REF_DIST / MIN_SCALE / EDGE_FEATHER so the drain can pick
+    // the smallest composite kernel per pass. Keep in sync with the shader: a value here below the shader's
+    // clips the ring.
+    private static final float[] RING_THICKNESS = {4.0f, 4.0f, 3.0f, 7.0f}; // index = CAT_*
+    private static final float RING_REF_DIST = 4.0f;
+    private static final float RING_MIN_SCALE = 0.40f;
+    private static final float RING_EDGE_FEATHER = 1.0f;
+
+    // Kernel radius in mask texels for a source whose nearest texel sits minEyeDist blocks deep (view-space).
+    // minEyeDist <= 0 means no distance thinning.
+    public static int glowSearchRadius(int category, float minEyeDist) {
+        float scale = minEyeDist > 0.0f
+                ? Math.clamp(RING_REF_DIST / minEyeDist, RING_MIN_SCALE, 1.0f) : 1.0f;
+        float r = RING_THICKNESS[category] * scale;
+        // The shader's coverage reaches zero at distance r + EDGE_FEATHER/2.
+        int s = (int) Math.ceil(r + 0.5f * RING_EDGE_FEATHER);
+        return Math.clamp(s, 1, GlintPipelines.MAX_GLOW_SEARCH);
     }
 
     /** Accumulates one held/dropped item's silhouette into the combined glow mask, the item analog of
@@ -541,13 +506,14 @@ public final class CustomGlintRenderer {
      * so each glowing entity / armor / item keeps its own outline instead of merging into one union ring.
      * The mask packs object id + visibility into alpha (core/glow_silhouette). {@code scissor} ({x,y,w,h},
      * bottom-left origin, full-res pixels) confines the pass to a group's screen bbox; null draws full
-     * screen. MaskSampler is NEAREST (the alpha is a packed classifier, not a continuous value).
+     * screen. {@code search} is the kernel radius in mask texels ({@link #glowSearchRadius}), which picks
+     * the pipeline variant. MaskSampler is NEAREST (the alpha is a packed classifier, not a continuous value).
      */
     public static void compositeGlowOutline(GpuTextureView maskColorView, GpuTextureView maskDepthView,
-                                            GpuTextureView outColorView, int[] scissor) {
+                                            GpuTextureView outColorView, @Nullable int[] scissor, int search) {
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
                 .createRenderPass(() -> "customglint glow outline composite", outColorView, Optional.empty())) {
-            pass.setPipeline(RenderSystem.getCompiledPipeline(GlintPipelines.GLOW_COMPOSITE_ID_PIPE));
+            pass.setPipeline(RenderSystem.getCompiledPipeline(GlintPipelines.glowCompositePipe(search)));
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("MaskSampler", maskColorView,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST));
@@ -565,14 +531,16 @@ public final class CustomGlintRenderer {
         }
     }
 
-    /** Bilinear-upscales the half-res ring ({@code ringColorView}) onto the main target, blended. */
-    public static void upscaleGlowRing(GpuTextureView ringColorView, GpuTextureView mainColorView) {
+    // scissor: {x,y,w,h}, bottom-left origin, main-target pixels; null covers the whole screen.
+    public static void upscaleGlowRing(GpuTextureView ringColorView, GpuTextureView mainColorView,
+                                       @Nullable int[] scissor) {
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder()
                 .createRenderPass(() -> "customglint glow upscale", mainColorView, Optional.empty())) {
             pass.setPipeline(RenderSystem.getCompiledPipeline(GlintPipelines.GLOW_UPSCALE_PIPE));
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("InSampler", ringColorView,
                     RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+            if (scissor != null) pass.enableScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
             pass.draw(3, 1, 0, 0);
         }
     }

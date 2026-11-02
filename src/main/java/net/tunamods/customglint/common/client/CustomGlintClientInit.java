@@ -45,7 +45,9 @@ public final class CustomGlintClientInit {
         // RenderType), so their shaders only get compiled if they're registered here. The silhouette pipeline
         // goes through RenderType.create and is compiled lazily like the other glint RTs.
         modEventBus.addListener((RegisterRenderPipelinesEvent event) -> {
-            event.registerPipeline(GlintPipelines.GLOW_COMPOSITE_ID_PIPE);
+            for (int s = 1; s <= GlintPipelines.MAX_GLOW_SEARCH; s++) {
+                event.registerPipeline(GlintPipelines.GLOW_COMPOSITE_ID_PIPES[s]);
+            }
             event.registerPipeline(GlintPipelines.GLOW_UPSCALE_PIPE);
             event.registerPipeline(GlintPipelines.CHROMATIC_COMPOSITE_PIPE);
         });
