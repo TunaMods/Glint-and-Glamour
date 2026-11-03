@@ -22,7 +22,7 @@ description='''${mod_description}'''
 [[dependencies.${mod_id}]]
     modId="customglint_api"
     type="required"
-    versionRange="[${mod_version},2.0)"
+    versionRange="[${mod_version},${api_next_major}.0)"
     ordering="AFTER"
     side="BOTH"
 [[dependencies.${mod_id}]]
