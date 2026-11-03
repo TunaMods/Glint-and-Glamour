@@ -290,7 +290,7 @@ tasks.register('stageApiInFullJar') {
   "jars": [
     {
       "identifier": { "group": "net.tunamods.customglint", "artifact": "glint-and-glamour-api" },
-      "version": { "range": "[${mod_version},2.0)", "artifactVersion": "${mod_version}" },
+      "version": { "range": "[${mod_version},${(mod_version.tokenize(".")[0] as int) + 1}.0)", "artifactVersion": "${mod_version}" },
       "path": "META-INF/jarjar/${apiJarName}",
       "isObfuscated": false
     }
@@ -328,6 +328,8 @@ tasks.named('jar', Jar).configure {
             loader_version_range: loader_version_range,
             mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
             mod_authors: mod_authors, mod_description: mod_description,
+            // the api up to the next major version, so a x.0.0 release still accepts its own api
+            api_next_major: (mod_version.tokenize(".")[0] as int) + 1,
     ]
     from('src/main/resources/META-INF/mods.full.toml') {
         into 'META-INF'
