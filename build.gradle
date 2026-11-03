@@ -147,6 +147,8 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             mod_version            : mod_version,
             mod_authors            : mod_authors,
             mod_description        : mod_description,
+            // the api up to the next major version, so a x.0.0 release still accepts its own api
+            api_next_major         : (mod_version.tokenize(".")[0] as int) + 1,
     ]
     inputs.properties replaceProperties
     expand replaceProperties
@@ -228,7 +230,7 @@ def generateApiJarJarMetadata = tasks.register('generateApiJarJarMetadata') {
         f.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
                 jars: [[
                         identifier  : [group: groupStr, artifact: 'glint-and-glamour-api'],
-                        version     : [range: "[${versionStr},2.0)".toString(), artifactVersion: versionStr],
+                        version     : [range: "[${versionStr},${(versionStr.tokenize(".")[0] as int) + 1}.0)".toString(), artifactVersion: versionStr],
                         path        : "META-INF/jarjar/${nestedName}".toString(),
                         isObfuscated: false
                 ]]
